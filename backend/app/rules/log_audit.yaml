@@ -1,0 +1,96 @@
+- name: 非工作时间登录
+  rule_type: log
+  trigger:
+    event_type: login
+    conditions:
+      - field: timestamp
+        op: hour_range
+        value: "22:00-06:00"
+  severity: medium
+  description: 账户在深夜22:00-06:00非工作时段发生登录行为，可能为非授权访问或恶意自动化尝试。
+  remediation: |
+    1. 联系账户持有人确认是否本人操作；
+    2. 若异常，立即重置账户密码，强制下线所有活动会话；
+    3. 通过VTP/ACL限制管理平面可接入时段，或在AAA上配置时间段策略。
+  standard_ref: 等保2.0三级 8.1.4.3
+
+- name: 重复登录失败次数超限
+  rule_type: log
+  trigger:
+    event_type: deny
+    aggregate:
+      group_by: [source_ip, user]
+      count_field: event_type
+      threshold: 5
+      window: 5m
+    conditions:
+      - field: result
+        op: contains
+        value: "fail|deny|invalid"
+  severity: high
+  description: 5分钟内同一源IP对同一账户出现>5次失败认证，疑似密码暴力破解或口令字典攻击。
+  remediation: |
+    1. 立即在防火墙/ACL中临时封禁源IP；
+    2. 锁定对应账户并通知管理员；
+    3. 启用SSH/AAA登录失败锁定策略：
+       local-user policy security-enhance
+       local-user policy password retry-interval 5 retry-time 3 block-time 30
+  standard_ref: 等保2.0三级 8.1.2.2 / 8.1.3.2
+
+- name: 管理员账户从非常规IP登录
+  rule_type: log
+  trigger:
+    event_type: login
+    conditions:
+      - field: user
+        op: in_list
+        value: [admin, root, administrator, super]
+      - field: source_ip
+        op: not_in_cidr
+        value: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10"]
+  severity: medium
+  description: 高权限admin/root类账户从办公管理网段以外的IP成功登录，存在账户被盗或越权接入风险。
+  remediation: |
+    1. 复核登录源IP是否属于合法跳板/运维专线；
+    2. 在VTY或AAA上绑定管理ACL仅放行可信源IP段；
+    3. 启用双因素认证并强制管理员使用堡垒机登录。
+  standard_ref: 等保2.0三级 8.1.2.2 / 8.1.3.2
+
+- name: 单会话大数据传输
+  rule_type: log
+  trigger:
+    event_type: traffic
+    conditions:
+      - field: _bytes
+        op: gt
+        value: 1073741824
+  severity: low
+  description: 单条会话传输数据量>1GB，可能为异常大批量下载/上传或内部数据外泄。
+  remediation: |
+    1. 定位源/目的地址及业务应用，确认是否为合法数据备份或业务同步；
+    2. 对非必要的大流量下载配置DLP/带宽限速策略。
+  standard_ref: 等保2.0三级 8.1.3.3
+
+- name: 同一账户多源IP并发登录
+  rule_type: log
+  trigger:
+    event_type: login
+    aggregate:
+      group_by: [user]
+      distinct: source_ip
+      threshold: 3
+      window: 10m
+    conditions:
+      - field: result
+        op: contains
+        value: "success|accept|allowed"
+  severity: medium
+  description: 10分钟内同一账户从>3个不同源IP成功登录，可能为账号共享、凭据泄露或被撞库后批量登录。
+  remediation: |
+    1. 确认是否合法多人共用场景；
+    2. 开启单点登录互斥策略：
+       aaa
+        local-user policy security-enhance
+        local-user policy single-login
+    3. 必要时强制重置受影响账户密码并启用MFA。
+  standard_ref: 等保2.0三级 8.1.2.2

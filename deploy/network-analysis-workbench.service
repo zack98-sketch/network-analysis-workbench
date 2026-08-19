@@ -1,0 +1,44 @@
+# network-analysis-workbench.service
+# Systemd 单元文件 —— 用于 WSL Ubuntu / Kali-Linux (systemd 环境) 或原生 Linux 服务器
+#
+# 安装步骤：
+#   sudo cp deploy/network-analysis-workbench.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable network-analysis-workbench
+#   sudo systemctl start  network-analysis-workbench
+#
+# 注意：
+#   - 下述路径以 /data/network-analysis-workbench 为例（对应 \\wsl$\Kali-Linux\data\network-analysis-workbench）
+#   - 若部署到其他目录，请修改 WorkingDirectory / ExecStart
+#   - WSL 若未启用 systemd，可改用 deploy/start_workbench.sh start
+
+[Unit]
+Description=Network Environment Analysis Workbench (FastAPI + Vue 3 SPA)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/data/network-analysis-workbench/backend
+Environment=PORT=8000
+Environment=WORKERS=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m uvicorn app.main:app \
+          --host 0.0.0.0 \
+          --port 8000 \
+          --workers 1 \
+          --log-level info \
+          --timeout-keep-alive 30
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/data/network-analysis-workbench/backend/logs/workbench.log
+StandardError=append:/data/network-analysis-workbench/backend/logs/workbench-error.log
+
+# 若希望用非 root 用户运行，请改成：
+# User=devops
+# Group=devops
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{{ title or "网络环境分析报告" }}</title>
+<style>
+:root {
+  --brand-500: #c96442;
+  --brand-600: #b0562f;
+  --brand-700: #934828;
+  --brand-100: #f4e0d5;
+  --text-900: #28261b;
+  --text-700: #46443b;
+  --text-500: #6e6d68;
+  --text-400: #9b988c;
+  --bg-50: #ffffff;
+  --bg-100: #faf9f5;
+  --bg-200: #f5f4ef;
+  --bg-300: #ede9de;
+  --bg-500: #dad9d4;
+  --success-500: #788c5d;
+  --error-500: #d64545;
+  --warning-500: #d4a03c;
+  --info-500: #4a7c94;
+  --border: #dad9d4;
+  --radius-md: 12px;
+  --radius-xl: 20px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Poppins", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-900);
+  background: var(--bg-100);
+}
+.report-wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 40px 32px;
+}
+.cover {
+  background: linear-gradient(135deg, var(--brand-600) 0%, var(--brand-700) 100%);
+  border-radius: var(--radius-xl);
+  padding: 80px 56px;
+  color: #fff;
+  margin-bottom: 40px;
+  position: relative;
+  overflow: hidden;
+}
+.cover::before {
+  content: "";
+  position: absolute;
+  top: -50%; right: -20%;
+  width: 500px; height: 500px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 50%;
+}
+.cover-badge {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.15);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 28px;
+}
+.cover h1 {
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 44px;
+  font-weight: 400;
+  line-height: 1.1;
+  margin: 0 0 20px;
+  max-width: 600px;
+  position: relative;
+}
+.cover-sub {
+  font-size: 16px;
+  opacity: 0.9;
+  margin: 0 0 40px;
+  max-width: 500px;
+  position: relative;
+}
+.cover-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  padding-top: 32px;
+  border-top: 1px solid rgba(255,255,255,0.2);
+  position: relative;
+}
+.cover-meta-item .label {
+  font-size: 11px;
+  opacity: 0.7;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.cover-meta-item .value {
+  font-size: 15px;
+  font-weight: 600;
+}
+.section {
+  background: var(--bg-50);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 40px;
+  margin-bottom: 28px;
+}
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--bg-300);
+}
+.section-title {
+  margin: 0;
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 26px;
+  font-weight: 400;
+  color: var(--text-900);
+  line-height: 1.2;
+}
+.section-title::before {
+  content: "";
+  display: inline-block;
+  width: 4px; height: 24px;
+  background: var(--brand-500);
+  border-radius: 2px;
+  margin-right: 12px;
+  vertical-align: -4px;
+}
+.section-sub {
+  font-size: 13px;
+  color: var(--text-500);
+  margin: 6px 0 0 16px;
+}
+.section-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--brand-100);
+  color: var(--brand-700);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.exec-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.stat-card {
+  background: var(--bg-100);
+  border: 1px solid var(--bg-300);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  text-align: center;
+}
+.stat-card .num {
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 36px;
+  font-weight: 400;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.stat-card .lbl {
+  font-size: 12px;
+  color: var(--text-500);
+  font-weight: 500;
+}
+.stat-card.high .num { color: var(--error-500); }
+.stat-card.medium .num { color: var(--warning-500); }
+.stat-card.low .num { color: var(--info-500); }
+.stat-card.good .num { color: var(--success-500); }
+.risk-overview {
+  padding: 20px 24px;
+  background: var(--bg-100);
+  border-left: 4px solid var(--brand-500);
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-700);
+}
+.risk-overview strong { color: var(--brand-700); }
+h3.subtitle {
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-700);
+  margin: 28px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--bg-300);
+}
+h3.subtitle:first-child { margin-top: 0; }
+.table-wrap { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--bg-300); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  background: var(--bg-200);
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-700);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+}
+tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--bg-300);
+  vertical-align: top;
+  color: var(--text-700);
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--bg-100); }
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.badge-high { background: #fcecea; color: var(--error-500); }
+.badge-medium { background: #fdf6e9; color: #8a5a1a; }
+.badge-low { background: #eef5f9; color: var(--info-500); }
+.badge-info { background: #eef5f9; color: var(--info-500); }
+.badge-good { background: #e7ecdd; color: var(--success-500); }
+.code-block {
+  background: var(--bg-200);
+  border: 1px solid var(--bg-300);
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-family: "Geist Mono", "Consolas", "Monaco", monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--text-700);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 10px 0;
+}
+.material-card {
+  padding: 16px 20px;
+  background: var(--bg-100);
+  border: 1px solid var(--bg-300);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+}
+.material-card .mc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.material-card .mc-name { font-weight: 600; font-size: 14px; color: var(--text-900); }
+.material-card .mc-meta { font-size: 12px; color: var(--text-500); }
+.material-card .mc-body {
+  font-size: 13px;
+  color: var(--text-700);
+  line-height: 1.7;
+}
+.config-section {
+  margin-bottom: 20px;
+}
+.config-section-title {
+  font-family: "Poppins", sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--brand-700);
+  padding: 8px 12px;
+  background: var(--brand-100);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.config-line {
+  font-family: "Geist Mono", "Consolas", monospace;
+  font-size: 12.5px;
+  padding: 4px 12px;
+  border-left: 2px solid var(--bg-300);
+  margin-left: 8px;
+  color: var(--text-700);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.config-line.risk {
+  background: #fcecea;
+  border-left-color: var(--error-500);
+  color: #7a1f1f;
+}
+.topo-diagram {
+  background: var(--bg-200);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  position: relative;
+  height: 320px;
+  overflow: hidden;
+}
+.topo-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+.topo-shape {
+  width: 48px; height: 48px;
+  border-radius: 10px;
+  background: var(--bg-50);
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.topo-shape.firewall { border-color: var(--brand-500); color: var(--brand-500); }
+.topo-shape.switch { border-color: var(--success-500); color: var(--success-500); }
+.topo-shape.router { border-color: var(--warning-500); color: var(--warning-500); }
+.topo-shape.host { border-color: var(--info-500); color: var(--info-500); }
+.topo-label {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-50);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.log-timeline {
+  padding-left: 28px;
+  position: relative;
+}
+.log-timeline::before {
+  content: "";
+  position: absolute;
+  left: 10px; top: 6px; bottom: 6px;
+  width: 2px;
+  background: var(--bg-300);
+}
+.log-item {
+  position: relative;
+  padding-bottom: 18px;
+}
+.log-item::before {
+  content: "";
+  position: absolute;
+  left: -24px; top: 4px;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--bg-50);
+  border: 2px solid var(--brand-500);
+}
+.log-item .li-time {
+  font-size: 11px;
+  color: var(--text-500);
+  margin: 0 0 4px;
+  font-family: "Geist Mono", monospace;
+}
+.log-item .li-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+.log-item .li-desc {
+  font-size: 12px;
+  color: var(--text-500);
+  margin: 0;
+}
+.appendix-item {
+  padding: 14px 18px;
+  background: var(--bg-100);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.appendix-item .ai-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand-700);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+.appendix-item .ai-value {
+  font-size: 13px;
+  color: var(--text-700);
+  font-family: "Geist Mono", monospace;
+  word-break: break-all;
+}
+.footer {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--bg-300);
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-400);
+}
+@media print {
+  body { background: #fff; }
+  .report-wrap { padding: 0; max-width: 100%; }
+  .section { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="report-wrap">
+
+<div class="cover">
+  <div class="cover-badge">Network Analysis Report</div>
+  <h1>{{ title or project_name or "网络环境分析报告" }}</h1>
+  <p class="cover-sub">基于配置基线核查、日志审计关联与流量异常检测的综合安全评估，涵盖等保合规参考与整改建议。</p>
+  <div class="cover-meta">
+    <div class="cover-meta-item">
+      <div class="label">项目名称</div>
+      <div class="value">{{ project_name or "未命名项目" }}</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="label">生成时间</div>
+      <div class="value">{{ generated_at }}</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="label">分析引擎</div>
+      <div class="value">Risk / Topology / Correlation v1</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title">执行摘要</h2>
+      <p class="section-sub">Executive Summary · 关键统计与总体结论</p>
+    </div>
+    <span class="section-tag">{{ risk_total }} 项风险发现</span>
+  </div>
+
+  <div class="exec-summary">
+    <div class="stat-card high">
+      <div class="num">{{ risk_high }}</div>
+      <div class="lbl">高危 HIGH</div>
+    </div>
+    <div class="stat-card medium">
+      <div class="num">{{ risk_medium }}</div>
+      <div class="lbl">中危 MEDIUM</div>
+    </div>
+    <div class="stat-card low">
+      <div class="num">{{ risk_low }}</div>
+      <div class="lbl">低危 LOW</div>
+    </div>
+    <div class="stat-card good">
+      <div class="num">{{ material_count }}</div>
+      <div class="lbl">分析材料数</div>
+    </div>
+  </div>
+
+  <div class="risk-overview">
+    <strong>总体结论：</strong>
+    本次共分析 <strong>{{ material_count }}</strong> 份材料（配置/日志/文档），
+    发现风险项 <strong>{{ risk_total }}</strong> 项，其中高危 <strong>{{ risk_high }}</strong>、中危 <strong>{{ risk_medium }}</strong>、低危 <strong>{{ risk_low }}</strong>。
+    建议按照等保2.0三级相关要求，优先完成高危项的整改与验证，同时结合拓扑结构梳理访问控制策略的完整性。
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title">材料分析与配置核查</h2>
+      <p class="section-sub">Materials & Configuration Audit</p>
+    </div>
+    <span class="section-tag">{{ material_count }} 份材料</span>
+  </div>
+
+  {% for m in materials %}
+  <div class="material-card">
+    <div class="mc-head">
+      <div>
+        <div class="mc-name">{{ m.file_name }}</div>
+        <div class="mc-meta">
+          {% if m.device_name %}设备 {{ m.device_name }} · {% endif %}
+          类型 {{ m.file_type or m.parser_type or '未知' }} ·
+          大小 {{ m.file_size_human or '—' }}
+        </div>
+      </div>
+      <span class="badge badge-good">{{ m.parse_status or 'done' }}</span>
+    </div>
+    {% if m.config_sections %}
+    <div class="mc-body">
+      {% for sec in m.config_sections[:6] %}
+      <div class="config-section">
+        <div class="config-section-title">[{{ sec.section_type }}] {{ sec.section_name or '' }}</div>
+        {% for item in sec.items[:8] %}
+        <div class="config-line{% if item.is_risk %} risk{% endif %}">{{ item.raw_line or (item.key ~ ' ' ~ (item.value or '')) }}</div>
+        {% endfor %}
+        {% if sec.items|length > 8 %}
+        <div class="config-line" style="color:var(--text-400);">... (共 {{ sec.items|length }} 行，已省略 {{ sec.items|length - 8 }} 行)</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="section">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title">风险发现与整改建议</h2>
+      <p class="section-sub">Risk Findings & Remediation</p>
+    </div>
+    <span class="section-tag">按严重度排序</span>
+  </div>
+
+  {% if risks %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:90px;">编号</th>
+          <th style="width:80px;">严重度</th>
+          <th style="width:100px;">分类</th>
+          <th>描述</th>
+          <th style="width:120px;">来源</th>
+          <th style="width:160px;">合规参考</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in risks %}
+        <tr>
+          <td class="code" style="font-family:monospace;font-size:12px;color:var(--brand-700);font-weight:600;">{{ r.risk_code }}</td>
+          <td>
+            {% if r.severity == 'high' or r.severity == 'critical' %}
+            <span class="badge badge-high">{{ r.severity|upper }}</span>
+            {% elif r.severity == 'medium' %}
+            <span class="badge badge-medium">MEDIUM</span>
+            {% elif r.severity == 'low' %}
+            <span class="badge badge-low">LOW</span>
+            {% else %}
+            <span class="badge badge-info">INFO</span>
+            {% endif %}
+          </td>
+          <td>{{ r.category or '—' }}</td>
+          <td>
+            <div style="font-weight:600;margin-bottom:8px;">{{ r.description }}</div>
+            {% if r.remediation_cmd %}
+            <div style="margin-top:4px;">
+              <div style="font-size:11px;color:var(--brand-700);font-weight:600;margin-bottom:4px;">整改命令 / 建议：</div>
+              <div class="code-block">{{ r.remediation_cmd }}</div>
+            </div>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--text-500);">{{ r.source_ref or '—' }}</td>
+          <td style="font-size:12px;color:var(--text-500);">{{ r.standard_ref or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="risk-overview" style="background:var(--bg-100);border-left-color:var(--success-500);">
+    <strong>未发现风险项。</strong>当前材料中未触发已启用的安全规则，请继续保持。
+  </div>
+  {% endif %}
+</div>
+
+<div class="section">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title">日志审计摘要</h2>
+      <p class="section-sub">Log Audit Summary · 关键事件时间线</p>
+    </div>
+    <span class="section-tag">{{ event_count }} 条事件</span>
+  </div>
+
+  {% if log_events %}
+  <div class="log-timeline">
+    {% for ev in log_events[:30] %}
+    <div class="log-item">
+      <p class="li-time">{{ ev.timestamp or '—' }}</p>
+      <p class="li-title">
+        <span class="badge badge-info">{{ ev.event_type or 'event' }}</span>
+        {% if ev.user %}用户 <strong>{{ ev.user }}</strong>{% endif %}
+        {% if ev.source_ip %} 从 {{ ev.source_ip }}{% endif %}
+        {% if ev.target_ip %} → {{ ev.target_ip }}{% endif %}
+      </p>
+      <p class="li-desc">
+        {% if ev.result %}结果: {{ ev.result }} · {% endif %}
+        {% if ev.device %}设备: {{ ev.device }} · {% endif %}
+        {{ ev.raw_line[:80] if ev.raw_line else '' }}
+      </p>
+    </div>
+    {% endfor %}
+    {% if log_events|length > 30 %}
+    <p style="font-size:12px;color:var(--text-500);margin-left:4px;">... 另有 {{ log_events|length - 30 }} 条日志未展示</p>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="risk-overview" style="background:var(--bg-100);border-left-color:var(--info-500);">
+    暂无可展示的日志事件。请上传SSH会话日志、Syslog或结构化CSV流量日志以进行关联分析。
+  </div>
+  {% endif %}
+</div>
+
+<div class="section">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title">拓扑结构概览</h2>
+      <p class="section-sub">Topology Overview · 自动推断的节点与连接</p>
+    </div>
+    <span class="section-tag">{{ topo_nodes_count }} 节点 / {{ topo_edges_count }} 连接</span>
+  </div>
+
+  {% if topology and topology.nodes %}
+  <div class="topo-diagram">
+    {% for n in topology.nodes %}
+    <div class="topo-node" style="left:{{ n.pos_x or 50 }}%;top:{{ n.pos_y or 50 }}%;">
+      <div class="topo-shape {{ n.node_type or 'host' }}">
+        {% if n.node_type == 'firewall' %}FW
+        {% elif n.node_type == 'switch' %}SW
+        {% elif n.node_type == 'router' %}RT
+        {% else %}H{% endif %}
+      </div>
+      <div class="topo-label">{{ n.name }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <h3 class="subtitle">节点清单</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>节点名称</th>
+          <th>类型</th>
+          <th>IP 地址</th>
+          <th>说明</th>
+          <th>来源</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for n in topology.nodes %}
+        <tr>
+          <td style="font-weight:600;">{{ n.name }}</td>
+          <td>
+            {% if n.node_type == 'firewall' %}<span class="badge badge-high">Firewall</span>
+            {% elif n.node_type == 'switch' %}<span class="badge badge-good">Switch</span>
+            {% elif n.node_type == 'router' %}<span class="badge badge-medium">Router</span>
+            {% else %}<span class="badge badge-info">Host</span>{% endif %}
+          </td>
+          <td style="font-family:monospace;">{{ n.ip_address or '—' }}</td>
+          <td style="font-size:12px;color:var(--text-500);">{{ n.interface_desc or '—' }}</td>
+          <td style="font-size:12px;color:var(--text-500);">{{ n.source_material or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="risk-overview" style="background:var(--bg-100);border-left-color:var(--info-500);">
+    当前项目未生成拓扑结构。拓扑可通过配置接口描述（to-XXX）、SSH日志连接关系、CSV流量日志自动推断。
+  </div>
+  {% endif %}
+</div>
+
+<div class="section">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title">附录 · 合规参考与说明</h2>
+      <p class="section-sub">Appendix · 引用标准、生成参数</p>
+    </div>
+    <span class="section-tag">Appendix</span>
+  </div>
+
+  <h3 class="subtitle">合规标准引用</h3>
+  <div class="risk-overview" style="background:var(--bg-100);border-left-color:var(--info-500);margin-bottom:20px;">
+    本报告中风险项的合规参考主要基于：
+    <ul style="margin:8px 0 0 20px;padding:0;">
+      <li>GB/T 22239-2019《信息安全技术 网络安全等级保护基本要求》（等保2.0）第三级要求</li>
+      <li>GB/T 25070-2019《信息安全技术 网络安全等级保护安全设计技术要求》</li>
+      <li>参考行业最佳实践与CIS Benchmark相关条款</li>
+    </ul>
+  </div>
+
+  <h3 class="subtitle">报告属性</h3>
+  <div class="appendix-item">
+    <div class="ai-label">项目</div>
+    <div class="ai-value">{{ project_name or '未命名项目' }} (ID: {{ project_id or '—' }})</div>
+  </div>
+  <div class="appendix-item">
+    <div class="ai-label">生成时间</div>
+    <div class="ai-value">{{ generated_at }}</div>
+  </div>
+  <div class="appendix-item">
+    <div class="ai-label">规则集</div>
+    <div class="ai-value">config_security.yaml ({{ rule_count.config or 0 }}条) · log_audit.yaml ({{ rule_count.log or 0 }}条) · traffic_anomaly.yaml ({{ rule_count.traffic or 0 }}条)</div>
+  </div>
+  <div class="appendix-item">
+    <div class="ai-label">免责声明</div>
+    <div class="ai-value" style="font-family:inherit;font-size:12px;">本报告基于自动化规则引擎生成，发现项仅供参考，需由安全管理人员复核确认后形成最终整改方案。对于因依赖本报告内容而产生的直接或间接损失，作者不承担法律责任。</div>
+  </div>
+</div>
+
+<div class="footer">
+  由 网络环境分析工作台 Network Analysis Workbench 自动生成 · {{ generated_at }}
+</div>
+
+</div>
+</body>
+</html>
