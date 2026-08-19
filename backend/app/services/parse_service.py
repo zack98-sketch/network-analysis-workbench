@@ -43,7 +43,7 @@ class ParseService:
             material.parser_type = f"{category}/{parser_name}"
 
             if category == "log" and isinstance(parse_result, list):
-                await self._save_log_events(material.id, parse_result, db)
+                await self._save_log_events(material.project_id, material.id, parse_result, db)
                 if parse_result and parse_result[0].get("device"):
                     material.device_name = str(parse_result[0]["device"])
 
@@ -52,12 +52,12 @@ class ParseService:
                     tree = parse_result
                 else:
                     tree = {"sections": [], "device_name": None}
-                await self._save_config_items(material.id, tree, db)
+                await self._save_config_items(material.project_id, material.id, tree, db)
                 if tree.get("device_name"):
                     material.device_name = tree["device_name"]
 
             elif category == "doc" and isinstance(parse_result, list):
-                await self._save_doc_index(material.id, parse_result, db)
+                await self._save_doc_index(material.project_id, material.id, parse_result, db)
 
             material.file_type = category
             material.parse_status = ParseStatus.SUCCESS
@@ -100,18 +100,15 @@ class ParseService:
                 await db.commit()
             raise exc
 
-    async def _save_log_events(self, material_id: int, events: List[Dict[str, Any]], db: AsyncSession) -> None:
+    async def _save_log_events(self, project_id: int, material_id: int, events: List[Dict[str, Any]], db: AsyncSession) -> None:
         await db.execute(delete(LogEvent).where(LogEvent.material_id == material_id))
         for idx, ev in enumerate(events):
-            # Parsers emit human-readable text in `detail`; roll up into JSON column
-            # so the risk engine and detail panel can read structured fields too.
             detail = ev.get("detail_json")
             detail_text = ev.get("detail")
             if detail is None and detail_text:
                 detail = {"value": detail_text}
             elif not isinstance(detail, dict):
                 detail = None
-            # Promote commonly needed structured fields so analyze_traffic can use them
             if isinstance(detail, dict):
                 for k in ("_protocol", "_src_port", "_dst_port", "_bytes"):
                     if k in ev and k not in detail:
@@ -124,11 +121,15 @@ class ParseService:
                 except Exception:
                     ts = None
             db.add(LogEvent(
+                project_id=project_id,
                 material_id=material_id,
                 timestamp=ts,
                 event_type=ev.get("event_type"),
                 source_ip=ev.get("source_ip"),
                 target_ip=ev.get("target_ip"),
+                destination_port=ev.get("_dst_port") or ev.get("destination_port"),
+                _protocol=ev.get("_protocol") or ev.get("protocol"),
+                _bytes=ev.get("_bytes") or ev.get("bytes"),
                 user=ev.get("user"),
                 device=ev.get("device"),
                 command=ev.get("command"),
@@ -139,7 +140,7 @@ class ParseService:
             ))
         await db.flush()
 
-    async def _save_config_items(self, material_id: int, tree: Dict[str, Any], db: AsyncSession) -> None:
+    async def _save_config_items(self, project_id: int, material_id: int, tree: Dict[str, Any], db: AsyncSession) -> None:
         await db.execute(delete(ConfigItem).where(ConfigItem.material_id == material_id))
         device_name = tree.get("device_name")
         sections = tree.get("sections", []) if isinstance(tree, dict) else []
@@ -149,6 +150,7 @@ class ParseService:
             items = section.get("items", [])
             for item in items:
                 db.add(ConfigItem(
+                    project_id=project_id,
                     material_id=material_id,
                     device_name=device_name,
                     section_type=stype,
@@ -165,10 +167,11 @@ class ParseService:
                 ))
         await db.flush()
 
-    async def _save_doc_index(self, material_id: int, entries: List[Dict[str, Any]], db: AsyncSession) -> None:
+    async def _save_doc_index(self, project_id: int, material_id: int, entries: List[Dict[str, Any]], db: AsyncSession) -> None:
         await db.execute(delete(DocIndex).where(DocIndex.material_id == material_id))
         for entry in entries:
             db.add(DocIndex(
+                project_id=project_id,
                 material_id=material_id,
                 title=entry.get("title"),
                 section_path=entry.get("section_path"),

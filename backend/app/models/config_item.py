@@ -17,6 +17,7 @@ class ConfigItem(Base):
     __tablename__ = "config_items"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     material_id = Column(Integer, ForeignKey("materials.id", ondelete="CASCADE"), nullable=False, index=True)
     device_name = Column(String(255), nullable=True, index=True)
     section_type = Column(String(128), nullable=True, index=True)
@@ -31,4 +32,5 @@ class ConfigItem(Base):
     is_risk = Column(Boolean, default=False, index=True)
     risk_level = Column(Enum(RiskLevel), default=RiskLevel.NONE, index=True)
 
+    project = relationship("Project")
     material = relationship("Material")

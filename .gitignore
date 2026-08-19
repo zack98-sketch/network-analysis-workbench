@@ -49,6 +49,7 @@ test_*.pdf
 test_*.txt
 test_*.cfg
 test_*.csv
+test_output_summary.json
 
 # ===== Editor/OS =====
 .idea/

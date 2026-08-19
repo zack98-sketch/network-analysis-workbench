@@ -123,6 +123,12 @@ async def update_project(project_id: int, payload: ProjectUpdate, db: AsyncSessi
     return _to_read(p)
 
 
+@router.patch("/projects/{project_id}", response_model=ProjectRead)
+async def patch_project(project_id: int, payload: ProjectUpdate, db: AsyncSession = Depends(get_db)):
+    """Alias for PUT (keeps UI-side partial updates straightforward)."""
+    return await update_project(project_id, payload, db)
+
+
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(project_id: int, db: AsyncSession = Depends(get_db)):
     stmt = select(Project).where(Project.id == project_id)

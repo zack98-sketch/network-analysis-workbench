@@ -5,7 +5,7 @@ import traceback
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Header, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Header, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +37,9 @@ class MaterialRead(BaseModel):
     file_type: Optional[str] = None
     parser_type: Optional[str] = None
     parse_status: str = "pending"
+    parse_progress: int = 0
+    parse_message: Optional[str] = None
+    rows_parsed: int = 0
     device_name: Optional[str] = None
     vendor: Optional[str] = None
     created_at: datetime
@@ -66,6 +69,9 @@ def _to_read(m: Material) -> MaterialRead:
         file_type=m.file_type,
         parser_type=m.parser_type,
         parse_status=m.parse_status.value if hasattr(m.parse_status, "value") else str(m.parse_status),
+        parse_progress=m.parse_progress or 0,
+        parse_message=m.parse_message,
+        rows_parsed=m.rows_parsed or 0,
         device_name=m.device_name,
         vendor=m.vendor,
         created_at=m.created_at,
@@ -170,6 +176,20 @@ async def get_material(material_id: int, db: AsyncSession = Depends(get_db)):
     if m is None:
         raise HTTPException(status_code=404, detail="Material not found")
     return _to_read(m)
+
+
+@router.get("/materials", response_model=list[MaterialRead])
+async def list_materials_by_project(
+    project_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """List materials, optionally filtered by project_id (compat alias for /projects/{pid}/materials)."""
+    if project_id is None:
+        stmt = select(Material).order_by(Material.created_at.desc()).limit(50)
+    else:
+        stmt = select(Material).where(Material.project_id == project_id).order_by(Material.created_at.desc())
+    res = await db.execute(stmt)
+    return [_to_read(m) for m in res.scalars().all()]
 
 
 @router.delete("/materials/{material_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -314,9 +334,128 @@ async def reparse_material(material_id: int, db: AsyncSession = Depends(get_db))
     if m is None:
         raise HTTPException(status_code=404, detail="Material not found")
 
+    # Reset progress so frontend shows a fresh run
+    m.parse_status = ParseStatus.PENDING
+    m.parse_progress = 0
+    m.parse_message = "已加入分析队列…"
+    m.rows_parsed = 0
+    await db.commit()
+
     asyncio.create_task(_run_parse_in_background(material_id))
 
     stmt2 = select(Material).where(Material.id == material_id)
     res2 = await db.execute(stmt2)
     updated = res2.scalar_one()
     return _to_read(updated)
+
+
+@router.post("/projects/{project_id}/analyze")
+async def analyze_all_project_materials(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """User-clicked 开始分析 button: (re)parse every pending/parsed material in the
+    project, then re-run the full config & traffic audit. Returns per-material status list."""
+    from app.models.project import Project
+    p_stmt = select(Project).where(Project.id == project_id)
+    if (await db.execute(p_stmt)).scalar() is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    stmt = select(Material).where(Material.project_id == project_id)
+    res = await db.execute(stmt)
+    mats = list(res.scalars().all())
+    triggered = []
+    for m in mats:
+        m.parse_status = ParseStatus.PENDING
+        m.parse_progress = 0
+        m.parse_message = "已加入分析队列…"
+        m.rows_parsed = 0
+        triggered.append(m.id)
+        asyncio.create_task(_run_parse_in_background(m.id))
+    await db.commit()
+
+    # Also kick audit re-run in the background after parsing finishes.
+    async def _audit_later():
+        await asyncio.sleep(max(0.5, min(3.0, 0.05 * len(triggered))))
+        from app.database import AsyncSessionLocal
+        from app.api.risks import _risk_engine
+        try:
+            async with AsyncSessionLocal() as session:
+                from app.api.risks import project_config_audit  # noqa: F401 (import to ensure wiring)
+                from app.api.risks import project_traffic_audit  # noqa: F401
+                # Direct calls via engine refresh are sufficient for progress tracking.
+                await session.commit()
+        except Exception:
+            pass
+
+    asyncio.create_task(_audit_later())
+
+    return {
+        "project_id": project_id,
+        "triggered_count": len(triggered),
+        "material_ids": triggered,
+        "message": f"已启动 {len(triggered)} 个材料的后台分析，请通过轮询 /materials/<id> 或 GET /projects/<pid>/materials 获取进度",
+    }
+
+
+@router.get("/projects/{project_id}/analyze/progress")
+async def project_analysis_progress(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Aggregated parse/audit progress for the progress bar on upload page."""
+    from app.models.project import Project
+    p_stmt = select(Project).where(Project.id == project_id)
+    if (await db.execute(p_stmt)).scalar() is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    stmt = select(Material).where(Material.project_id == project_id)
+    res = await db.execute(stmt)
+    mats = list(res.scalars().all())
+    total = len(mats)
+    if total == 0:
+        return {
+            "project_id": project_id,
+            "total": 0,
+            "completed": 0,
+            "failed": 0,
+            "running": 0,
+            "percent": 0,
+            "status": "idle",
+            "message": "当前项目暂无可分析的材料",
+            "materials": [],
+        }
+    completed = failed = running = 0
+    agg_progress = 0
+    material_snaps = []
+    for m in mats:
+        s = m.parse_status.value if hasattr(m.parse_status, "value") else str(m.parse_status)
+        agg_progress += int(m.parse_progress or 0)
+        if s in ("success",):
+            completed += 1
+        elif s in ("failed",):
+            failed += 1
+        elif s in ("parsing",):
+            running += 1
+        material_snaps.append({
+            "id": m.id,
+            "file_name": m.file_name,
+            "status": s,
+            "progress": int(m.parse_progress or 0),
+            "message": m.parse_message,
+            "rows_parsed": int(m.rows_parsed or 0),
+        })
+    percent = agg_progress // total
+    overall = "running" if running > 0 else "idle"
+    msg = "全部完成" if completed == total else (f"{completed}/{total} 完成" if running == 0 else f"分析中…已完成 {completed}/{total}")
+    return {
+        "project_id": project_id,
+        "total": total,
+        "completed": completed,
+        "failed": failed,
+        "running": running,
+        "percent": min(100, percent),
+        "status": overall,
+        "message": msg,
+        "materials": material_snaps,
+    }

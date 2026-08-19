@@ -45,29 +45,44 @@ api.interceptors.response.use(
 /** 将后端返回的 snake_case 材料对象映射为前端 Material 格式 */
 function mapMaterial(raw: any): Material {
   const parseStatus = raw.parse_status || raw.status || 'pending'
-  const statusMap: Record<string, Material['status']> = {
-    pending: 'pending',
-    parsing: 'pending',
-    success: 'parsed',
-    parsed: 'parsed',
-    failed: 'failed',
-    indexed: 'indexed',
-    risk: 'risk'
+  // 保留后端更丰富的 parse 状态：pending/parsing/success/failed 直接透传；parsed/indexed/risk 兼容
+  const direct = String(parseStatus || '').toLowerCase()
+  let finalStatus: Material['status']
+  if (['pending', 'parsing', 'success', 'failed', 'parsed', 'indexed', 'risk'].includes(direct)) {
+    finalStatus = direct as any
+  } else {
+    const legacyMap: Record<string, Material['status']> = {
+      pending: 'pending',
+      success: 'success',
+      parsed: 'parsed',
+      failed: 'failed',
+      indexed: 'indexed',
+      risk: 'risk'
+    }
+    finalStatus = legacyMap[direct] || 'pending'
   }
   return {
     id: raw.id,
     name: raw.file_name || raw.name || '未命名',
     type: raw.file_type || raw.type || 'log',
     format: (raw.file_name || raw.name || '').split('.').pop()?.toUpperCase() || 'TXT',
-    size: raw.file_size ? (raw.file_size / 1024).toFixed(1) + ' KB' : raw.size || '0 KB',
+    size: raw.file_size ?? raw.size,
     uploadedAt: raw.created_at || raw.uploadedAt || '',
-    status: statusMap[parseStatus] || 'pending',
+    rows: raw.rows ?? raw.rows_parsed,
+    status: finalStatus,
     parse_status: parseStatus,
     parser_type: raw.parser_type,
     device_name: raw.device_name,
+    deviceName: raw.device_name,
     file_name: raw.file_name,
     file_type: raw.file_type,
-    file_size: raw.file_size
+    file_size: raw.file_size,
+    parse_progress: Number(raw.parse_progress ?? 0) || 0,
+    progress: Number(raw.parse_progress ?? 0) || 0,
+    parse_message: raw.parse_message,
+    message: raw.parse_message,
+    rows_parsed: Number(raw.rows_parsed ?? 0) || 0,
+    risksCount: raw.risks_count || 0,
   }
 }
 
@@ -193,6 +208,39 @@ export const materialApi = {
   reparse: async (id: string | number): Promise<Material> => {
     const res = await api.post(`/materials/${id}/reparse`)
     return mapMaterial(res)
+  },
+
+  analyzeAll: async (projectId: string | number) => {
+    return await api.post(`/projects/${projectId}/analyze`)
+  },
+
+  progress: async (projectId: string | number) => {
+    return await api.get(`/projects/${projectId}/analyze/progress`)
+  }
+}
+
+export const manualApi = {
+  list: async (params?: { q?: string; category?: string; mapping_target?: string; vendor?: string; limit?: number }) => {
+    return await api.get('/dictionaries/manuals', { params })
+  },
+  categories: async () => {
+    return await api.get('/dictionaries/manuals/categories')
+  },
+  get: async (id: number | string) => {
+    return await api.get(`/dictionaries/manuals/${id}`)
+  },
+  create: async (payload: Record<string, any>) => {
+    return await api.post('/dictionaries/manuals', payload)
+  },
+  update: async (id: number | string, payload: Record<string, any>) => {
+    return await api.put(`/dictionaries/manuals/${id}`, payload)
+  },
+  remove: async (id: number | string) => {
+    return await api.delete(`/dictionaries/manuals/${id}`)
+  },
+  /** 解析依据配对：把 raw_line/配置项/日志原文传给后端匹配字典条目 */
+  pair: async (payload: { q: string; mapping_target?: 'config_parser' | 'log_parser' | 'both' }) => {
+    return await api.post('/dictionaries/manuals/_pair', payload)
   }
 }
 
@@ -250,7 +298,8 @@ export const configApi = {
   }
 }
 
-export const manualApi = {
+/** 遗留手册接口：检索项目内用户上传的材料文档（DocIndex） */
+export const docApi = {
   search: async (projectId: string | number, query: string): Promise<DocSection[]> => {
     const data = await api.get(`/projects/${projectId}/manuals/search`, {
       params: { q: query }
@@ -295,6 +344,21 @@ export const riskApi = {
   updateStatus: async (id: string | number, status: string): Promise<RiskFinding> => {
     const res = await api.patch(`/risks/${id}`, { status })
     return mapRisk(res)
+  }
+}
+
+export const auditApi = {
+  /** 项目范围配置核查 (POST /projects/{id}/audit/config) */
+  configAudit: async (projectId: string | number) => {
+    return await api.post(`/projects/${projectId}/audit/config`)
+  },
+  /** 项目范围流量审核 (POST /projects/{id}/audit/traffic) */
+  trafficAudit: async (projectId: string | number) => {
+    return await api.post(`/projects/${projectId}/audit/traffic`)
+  },
+  /** 项目轻量汇总卡片 (GET /projects/{id}/audit/summary) */
+  summary: async (projectId: string | number) => {
+    return await api.get(`/projects/${projectId}/audit/summary`)
   }
 }
 

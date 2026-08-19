@@ -6,6 +6,7 @@ from app.models.doc_index import DocIndex
 from app.models.risk_finding import RiskFinding
 from app.models.topology import TopoNode, TopoEdge
 from app.models.rule import Rule
+from app.models.manual import Manual
 
 __all__ = [
     "Project",
@@ -17,4 +18,5 @@ __all__ = [
     "TopoNode",
     "TopoEdge",
     "Rule",
+    "Manual",
 ]

@@ -16,10 +16,10 @@ export interface Material {
   name: string
   type: 'log' | 'config' | 'manual' | 'training'
   format: string
-  size?: string
+  size?: string | number
   uploadedAt?: string
   rows?: number
-  status: 'parsed' | 'indexed' | 'pending' | 'risk' | 'success' | 'failed'
+  status: 'parsed' | 'indexed' | 'pending' | 'risk' | 'success' | 'failed' | 'parsing' | string
   risksCount?: number
   file_name?: string
   file_type?: string
@@ -27,6 +27,12 @@ export interface Material {
   parse_status?: string
   parser_type?: string
   device_name?: string
+  deviceName?: string
+  parse_progress?: number
+  progress?: number
+  parse_message?: string
+  message?: string
+  rows_parsed?: number
   created_at?: string
 }
 

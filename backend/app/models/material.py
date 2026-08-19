@@ -26,8 +26,12 @@ class Material(Base):
     file_type = Column(String(64), nullable=True, index=True)
     parser_type = Column(String(64), nullable=True, index=True)
     parse_status = Column(Enum(ParseStatus), default=ParseStatus.PENDING, index=True)
+    parse_progress = Column(Integer, default=0, nullable=False)  # 0~100
+    parse_message = Column(String(1024), nullable=True)
+    rows_parsed = Column(Integer, default=0, nullable=False)
     device_name = Column(String(255), nullable=True, index=True)
     vendor = Column(String(128), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     project = relationship("Project")

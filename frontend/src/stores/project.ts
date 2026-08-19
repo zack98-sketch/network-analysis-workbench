@@ -23,6 +23,16 @@ export const useProjectStore = defineStore('project', () => {
     currentProject.value = project
   }
 
+  function clearProject() {
+    currentProject.value = {
+      id: '',
+      name: '',
+      status: 'active',
+      materialsCount: 0,
+      risksCount: 0,
+    }
+  }
+
   async function init() {
     if (initialized.value) return
     try {
@@ -42,6 +52,7 @@ export const useProjectStore = defineStore('project', () => {
     initialized,
     setActive,
     setProject,
+    clearProject,
     init
   }
 })
