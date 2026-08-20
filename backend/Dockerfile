@@ -42,7 +42,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ ./
 
-COPY --from=frontend-build /app/backend/static ./static
+COPY --from=frontend-build /backend/static ./static
 
 ENV DATA_DIR=/app/data
 ENV DATABASE_URL=sqlite+aiosqlite:////app/data/workbench.db

@@ -1,0 +1,55 @@
+# Dependencies
+**/node_modules/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+backend/.venv/
+backend/venv/
+
+# Build artifacts
+**/.vite/
+**/.cache/
+**/dist/
+**/build/
+backend/static/assets/
+backend/static/index.html
+
+# Runtime data
+backend/data/
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.sqlite
+**/*.sqlite3
+backend/logs/
+*.log
+
+# Test files
+backend/check_db*.py
+backend/debug_server*.sh
+backend/test_*.sh
+backend/net_test.sh
+backend/verify_server.sh
+test_*.log
+test_*.pdf
+test_*.txt
+test_*.cfg
+test_*.csv
+test_output_summary.json
+
+# Git / IDE
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Docs (not needed in image)
+docs/
+*.md
+!README.md
+
+# Trae internal
+.trae-html-share-packages/

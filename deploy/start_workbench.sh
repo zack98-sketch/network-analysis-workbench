@@ -7,7 +7,7 @@ set -e
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BACKEND_DIR="$APP_DIR/backend"
-FRONTEND_DIST="$APP_DIR/frontend/dist"
+# 前端构建产物在 backend/static/（vite outDir: '../backend/static'）
 LOG_DIR="$BACKEND_DIR/logs"
 PID_FILE="$LOG_DIR/workbench.pid"
 LOG_FILE="$LOG_DIR/workbench.log"

@@ -60,8 +60,7 @@ Thumbs.db
 *.swo
 
 # ===== Docker / WSL mounted =====
-.dockerignore
-# keep: .dockerignore is needed for docker build but exclude local WSL mounts artifacts
+# .dockerignore 已纳入版本控制，Docker 构建需要此文件
 test_materials/*
 !test_materials/.gitkeep
 
