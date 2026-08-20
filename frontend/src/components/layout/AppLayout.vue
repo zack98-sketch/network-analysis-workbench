@@ -2,7 +2,7 @@
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useProjectStore } from '@/stores/project'
-import { watchEffect, onMounted } from 'vue'
+import { watchEffect, onMounted, ref } from 'vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -53,6 +53,17 @@ const navGroups = [
     ]
   }
 ]
+
+const searchQuery = ref('')
+
+function handleSearch() {
+  if (!searchQuery.value.trim()) return
+  router.push({ name: 'manuals', query: { q: searchQuery.value.trim() } })
+}
+
+function goToManuals() {
+  router.push({ name: 'manuals' })
+}
 
 const icons: Record<string, string> = {
   home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
@@ -121,11 +132,11 @@ const icons: Record<string, string> = {
             <circle cx="11" cy="11" r="8"/>
             <line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-          <input type="text" placeholder="搜索日志、配置、手册或风险项…">
+          <input type="text" v-model="searchQuery" placeholder="搜索日志、配置、手册或风险项…" @keyup.enter="handleSearch">
           <span class="text-mono" style="padding:2px 7px;border-radius:6px;background:var(--muted);color:var(--muted-foreground)">⌘K</span>
         </div>
         <div class="top-actions">
-          <button class="btn btn-secondary btn-sm">
+          <button class="btn btn-secondary btn-sm" @click="goToManuals">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
             查看操作手册
           </button>

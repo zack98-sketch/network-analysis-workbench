@@ -339,6 +339,26 @@ async def generate_report(
         )
 
 
+@router.post("/projects/{project_id}/reports/preview")
+async def preview_report(
+    project_id: int,
+    payload: ReportGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    # 仅生成 HTML 内容用于预览，不保存文件到磁盘
+    data = await _gather_project_data(project_id, db, payload)
+    html = _report_service.generate_html(
+        project=data["project"],
+        materials=data["materials"],
+        risks=data["risks"],
+        config_trees=data["config_trees"],
+        topology=data["topology"],
+        events=data["log_events"],
+        title=payload.title,
+    )
+    return {"html": html, "project_id": project_id}
+
+
 @router.get("/projects/{project_id}/reports", response_model=list[ReportRead])
 async def list_reports(project_id: int, db: AsyncSession = Depends(get_db)):
     result = []

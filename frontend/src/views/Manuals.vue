@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { manualApi } from '@/api'
 import type { DocSection } from '@/types'
@@ -324,10 +325,16 @@ async function seedStarter() {
   } catch {}
 }
 
+const route = useRoute()
+
 onMounted(async () => {
   await loadCategories()
+  // 如果从搜索框跳转过来，带上查询参数
+  const q = route.query.q as string
+  if (q) {
+    searchQ.value = q
+  }
   await loadLibrary()
-  // 若字典为空，询问是否填充样例（静默先加载）
 })
 </script>
 
