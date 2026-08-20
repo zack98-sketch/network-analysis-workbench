@@ -10,7 +10,7 @@ from app.config import settings
 
 class RiskEngine:
     def __init__(self):
-        self.rules_dir = Path(__file__).resolve().parent.parent / "rules"
+        self.rules_dir = settings.BASE_DIR / "app" / "rules"
         self.config_rules = self._load_rules("config_security.yaml")
         self.log_rules = self._load_rules("log_audit.yaml")
         self.traffic_rules = self._load_rules("traffic_anomaly.yaml")

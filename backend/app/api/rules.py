@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.config import settings
 
 router = APIRouter()
 
@@ -51,7 +52,7 @@ class RuleTemplate(BaseModel):
 
 def _load_yaml_rules() -> list[dict]:
     """Scan built-in YAML rule files and produce flattened rule list."""
-    rules_dir = Path(__file__).resolve().parent.parent / "rules"
+    rules_dir = settings.BASE_DIR / "app" / "rules"
     if not rules_dir.exists():
         return []
     try:

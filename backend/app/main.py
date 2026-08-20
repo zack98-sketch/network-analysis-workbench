@@ -12,7 +12,7 @@ from app.database import init_db
 from app.api import projects, materials, logs, configs, manuals, risks, topology, rules, reports
 
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+STATIC_DIR = settings.BASE_DIR / "static"
 INDEX_HTML = STATIC_DIR / "index.html"
 
 

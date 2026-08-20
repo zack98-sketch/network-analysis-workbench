@@ -11,7 +11,7 @@ from app.config import settings
 
 class ReportService:
     def __init__(self):
-        templates_dir = Path(__file__).resolve().parent.parent / "data" / "templates"
+        templates_dir = settings.BASE_DIR / "app" / "data" / "templates"
         self.env = Environment(
             loader=FileSystemLoader(str(templates_dir)),
             autoescape=select_autoescape(["html", "xml"]),
