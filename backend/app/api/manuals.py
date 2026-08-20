@@ -5,7 +5,7 @@ specific project and are NOT the same thing as user-uploaded doc materials.
 Think of them as built-in or admin-maintained CLI/protocol/log-pattern docs.
 """
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -196,35 +196,6 @@ def _to_read(m: Manual) -> ManualRead:
         created_at=m.created_at,
         updated_at=m.updated_at,
     )
-
-
-@router.get("/dictionaries/manuals", response_model=List[ManualRead])
-async def list_dictionary_manuals(
-    category: Optional[str] = Query(None),
-    mapping_target: Optional[str] = Query(None),
-    vendor: Optional[str] = Query(None),
-    q: Optional[str] = Query(None),
-    limit: int = Query(100, ge=1, le=500),
-    db: AsyncSession = Depends(get_db),
-):
-    stmt = select(Manual)
-    if category:
-        stmt = stmt.where(Manual.category == _enum_or(category, ManualCategory, ManualCategory.CONFIG_PATTERN))
-    if mapping_target:
-        stmt = stmt.where(Manual.mapping_target == _enum_or(mapping_target, MappingTarget))
-    if vendor:
-        stmt = stmt.where(Manual.vendor == vendor)
-    if q:
-        like = f"%{q}%"
-        stmt = stmt.where(or_(
-            Manual.title.ilike(like),
-            Manual.summary.ilike(like),
-            Manual.content_md.ilike(like),
-            cast(Manual.trigger_keywords, String).ilike(like),
-        ))
-    stmt = stmt.order_by(Manual.updated_at.desc()).limit(limit)
-    res = await db.execute(stmt)
-    return [_to_read(m) for m in res.scalars().all()]
 
 
 @router.get("/dictionaries/manuals/categories")
@@ -544,13 +515,8 @@ async def _ensure_seeded(db: AsyncSession):
     await db.commit()
 
 
-# Re-define list_dictionary_manuals to first ensure seeds exist (once per app start).
-# We do this by monkey-patching a thin wrapper: wrap the handler with a pre-step.
-_list_manuals_orig = list_dictionary_manuals
-
-
 @router.get("/dictionaries/manuals", response_model=List[ManualRead])
-async def list_dictionary_manuals(  # noqa: F811
+async def list_dictionary_manuals(
     category: Optional[str] = Query(None),
     mapping_target: Optional[str] = Query(None),
     vendor: Optional[str] = Query(None),
