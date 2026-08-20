@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   workbench:
     build:
@@ -11,14 +9,11 @@ services:
     ports:
       - "8080:8000"
     volumes:
-      # 注意：./data 是相对于本 docker-compose.yml 文件所在的 deploy/ 目录
-      # 即宿主机实际路径为 network-analysis-workbench/deploy/data/
-      # 映射到容器内的 /app/data，包含数据库、上传文件、导出报告等持久化数据
       - ./data:/app/data
     environment:
       - TZ=Asia/Shanghai
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/projects').read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
