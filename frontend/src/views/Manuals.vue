@@ -512,7 +512,7 @@ onMounted(async () => {
             <p v-if="h.summary" class="hit-summary">{{ h.summary }}</p>
             <div v-if="h.snippet" class="hit-snippet">
               <span class="muted">相关片段：</span>
-              <quote>{{ h.snippet }}</quote>
+              <blockquote class="hit-snippet-text">{{ h.snippet }}</blockquote>
             </div>
             <div v-if="h.matched_keywords?.length" class="hit-kws">
               <span class="muted">匹配触发词：</span>
@@ -797,7 +797,7 @@ onMounted(async () => {
 .hit-title { margin: 4px 0 2px; font-size: 15px; font-weight: 700; }
 .hit-summary { margin: 0 0 8px; color: var(--color-text-soft); font-size: 13px; line-height: 1.6; }
 .hit-snippet { font-size: 12.5px; margin-bottom: 8px; }
-.hit-snippet quote {
+.hit-snippet .hit-snippet-text {
   display: block; margin-top: 4px;
   padding: 8px 12px; border-radius: 10px; background: var(--color-bg-soft);
   border-left: 3px solid var(--primary);
