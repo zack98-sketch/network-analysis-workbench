@@ -489,6 +489,200 @@ count(event_type in {login, auth, logon} AND result=fail)
 """,
         standard_ref="GB/T 22239-2019 8.1.4 登录失败处理",
     ),
+    # ----- 华为官方产品文档嵌入（操作手册字典库 / 本地词典） -----
+    dict(
+        title="华为 ASG 防火墙显示类命令参考（V300R022C00）",
+        category="command_reference",
+        vendor="Huawei",
+        device_family="ASG-D/ASG-E/ASG5000",
+        os_version="V300R022C00",
+        mapping_target="config_parser",
+        trigger_keywords=[
+            "display address", "display address-group", "display application bypass info", "display arp",
+            "display audit_policy accelerate", "display bridge-group", "display capacity", "display config-list",
+            "display cpu usage", "display current-config", "display date", "display debugging all",
+            "display dp drop statistics", "display dp memory", "display dp state", "display flowfast state",
+            "display ha config diff", "display ha state", "display hardware info", "display http_file_cache statistic info",
+            "display https-portal new-connection detail", "display ike sa", "display interface",
+            "display ip defend drop info", "display ip interface brief", "display ip ospf", "display ip rip",
+            "display ip route", "display ip session", "display ipsec sa", "display ipv6",
+            "display ldap-auth easy-name-match switch", "display lldp local-information",
+            "display lldp neighbor-information", "display lldp statistics", "display log statistics",
+            "display memory-usage", "display nat-policy", "display policy accelerate",
+            "display qos-profile", "display qos-profile statistics", "display statistics",
+            "display sslproxy-optimize switch", "display tcpstack connection all",
+            "display tcpstack connection source-ip", "display tcpstack switch", "display tdma user-net",
+            "display update-http-proxy", "display user-auth whitelist cache", "display user-manage online-user",
+            "display user-share", "display user-waa", "display version",
+            "ASG", "ASG-D", "ASG-E", "ASG5000", "华为防火墙", "应用安全网关",
+        ],
+        summary="华为 ASG 系列（ASG-D/ASG-E/ASG5000）V300R022C00 全部显示类（display）命令清单，覆盖地址、策略、会话、路由、VPN、HA、硬件、用户认证等审计高频场景。来源于华为官方产品文档 EDOC1100313731。",
+        content_md="""## 华为 ASG 防火墙显示类命令（V300R022C00）
+
+来源：HUAWEI ASG-D, ASG-E, ASG5000 V300R022C00 产品文档（EDOC1100313731）
+章节：命令参考 → 显示类命令
+原文：<https://support.huawei.com/hedex/hdx.do?docid=EDOC1100313731&id=ZH-CN_TOPIC_0000001314006092>
+
+### 系统与版本
+| 命令 | 说明 |
+|------|------|
+| `display version` | 设备软件版本与启动信息 |
+| `display date` | 系统时间 |
+| `display current-config` | 当前生效配置 |
+| `display config-list` | 配置变更列表 |
+
+### 地址与安全策略
+| 命令 | 说明 |
+|------|------|
+| `display address` | 地址对象 |
+| `display address-group` | 地址组 |
+| `display audit_policy accelerate` | 审计策略加速状态 |
+| `display nat-policy` | NAT 策略 |
+| `display policy accelerate` | 安全策略加速状态 |
+| `display qos-profile` | QoS Profile |
+| `display qos-profile statistics` | QoS 统计 |
+| `display qos-profile NAME sfq` | 指定 QoS 的 SFQ |
+
+### 会话与流量
+| 命令 | 说明 |
+|------|------|
+| `display ip session` | IPv4 会话表 |
+| `display statistics` | 流量统计 |
+| `display flowfast state` | FlowFast 状态 |
+| `display tcpstack connection all` | 所有 TCP 连接 |
+| `display tcpstack connection source-ip <IP>` | 按源 IP 查看 TCP 连接 |
+| `display tcpstack switch` | TCP 协议栈优化开关 |
+| `display sslproxy-optimize switch` | SSL 代理优化开关 |
+| `display https-portal new-connection detail` | HTTPS Portal 新连接详情 |
+
+### 路由与接口
+| 命令 | 说明 |
+|------|------|
+| `display ip route` | IPv4 路由表 |
+| `display ip ospf` | OSPF 邻居与状态 |
+| `display ip rip` | RIP 路由 |
+| `display ip interface brief` | 接口 IP 简要信息 |
+| `display interface` | 接口详细信息 |
+| `display arp` | ARP 表 |
+| `display ipv6` | IPv6 相关信息 |
+
+### VPN（IKE / IPSec）
+| 命令 | 说明 |
+|------|------|
+| `display ike sa` | IKE SA |
+| `display ipsec sa` | IPSec SA |
+
+### 用户与认证
+| 命令 | 说明 |
+|------|------|
+| `display user-manage online-user` | 在线用户 |
+| `display user-auth whitelist cache` | 用户认证白名单缓存 |
+| `display user-share` | 用户共享信息 |
+| `display user-waa` | 用户 WAA |
+| `display ldap-auth easy-name-match switch` | LDAP 认证易名匹配开关 |
+
+### HA 与硬件
+| 命令 | 说明 |
+|------|------|
+| `display ha config diff` | HA 配置差异 |
+| `display ha state` | HA 状态 |
+| `display hardware info` | 硬件信息 |
+| `display capacity` | 设备容量 |
+| `display cpu usage` | CPU 使用率 |
+| `display memory-usage` | 内存使用率 |
+| `display dp drop statistics` | 数据面丢包统计 |
+| `display dp memory` | 数据面内存 |
+| `display dp state` | 数据面状态 |
+| `display ip defend drop info` | IP 防御丢包信息 |
+| `display log statistics` | 日志统计 |
+| `display bridge-group` | 桥组 |
+| `display application bypass info` | 应用绕过信息 |
+| `display lldp local-information` | LLDP 本地信息 |
+| `display lldp neighbor-information` | LLDP 邻居信息 |
+| `display lldp statistics` | LLDP 统计 |
+| `display http_file_cache statistic info` | HTTP 文件缓存统计 |
+| `display update-http-proxy` | HTTP 代理更新 |
+| `display debugging all` | 调试开关 |
+| `display tdma user-net` | TDMA 用户网络 |
+
+### 解析约定
+- 配置解析时，`display current-config` 的输出可直接喂给本系统的配置解析器（ConfigParser）。
+- 会话/流量类命令（`display ip session`、`display statistics`）的输出可参考其字段结构与日志解析器（LogParser）做配对。
+- LLDP 相关命令的输出可作为 TopologyEngine 拓扑发现的依据。
+""",
+        references=[
+            "https://support.huawei.com/hedex/hdx.do?docid=EDOC1100313731&id=ZH-CN_TOPIC_0000001314006092",
+        ],
+        standard_ref="EDOC1100313731 命令参考 显示类命令",
+    ),
+    dict(
+        title="华为 S12700 交换机查看设备状态命令参考（V200R019C10）",
+        category="command_reference",
+        vendor="Huawei",
+        device_family="S12700/S12700E",
+        os_version="V200R019C10",
+        mapping_target="config_parser",
+        trigger_keywords=[
+            "display cpu-usage", "display cpu-usage configuration", "display cpu-usage history",
+            "display device", "display device manufacture-info", "display diagnostic-information",
+            "display environment version", "display elabel", "display esn", "display fan", "display fan-para",
+            "display health", "display memory-usage", "display memory-usage threshold",
+            "display package-information", "display power", "display power system",
+            "display system-mac", "display transceiver", "display temperature", "display version",
+            "display voltage", "display version", "S12700", "S12700E", "华为交换机", "园区核心交换机",
+        ],
+        summary="华为 S12700/S12700E V200R019C10 全部“查看设备状态的命令”清单，覆盖系统版本、硬件资产、CPU/内存、风扇、电源、温度、电压等设备状态审计场景。来源于华为官方产品文档 EDOC1100126513。",
+        content_md="""## 华为 S12700 交换机查看设备状态的命令（V200R019C10）
+
+来源：S12700, S12700E V200R019C10 产品文档（EDOC1100126513）
+章节：设备管理命令 → 查看设备状态的命令
+原文：<https://support.huawei.com/hedex/hdx.do?docid=EDOC1100126513&id=ZH-CN_CONCEPT_0177113659>
+
+### 系统与版本
+| 命令 | 说明 |
+|------|------|
+| `display version` | 设备软件版本 |
+| `display version`（集群） | 集群系统版本 |
+| `display system-mac` | 系统 MAC |
+| `display esn` | 设备序列号（ESN） |
+| `display elabel` | 电子标签 |
+| `display device manufacture-info` | 设备制造信息 |
+| `display package-information` | 软件包信息 |
+| `display diagnostic-information` | 诊断信息（综合） |
+
+### 硬件运行状态
+| 命令 | 说明 |
+|------|------|
+| `display device` | 设备部件信息 |
+| `display health` | 设备健康状态 |
+| `display fan` | 风扇状态 |
+| `display fan-para` | 风扇参数 |
+| `display power` | 电源状态 |
+| `display power system` | 电源系统 |
+| `display temperature` | 温度 |
+| `display voltage` | 电压 |
+| `display environment version` | 环境监控版本 |
+| `display transceiver` | 光模块信息 |
+
+### CPU / 内存
+| 命令 | 说明 |
+|------|------|
+| `display cpu-usage` | CPU 使用率 |
+| `display cpu-usage configuration` | CPU 使用率配置 |
+| `display cpu-usage history` | CPU 使用率历史 |
+| `display memory-usage` | 内存使用率 |
+| `display memory-usage threshold` | 内存阈值配置 |
+
+### 解析约定
+- `display diagnostic-information` 的输出是综合诊断信息，适合作为整体设备巡检的输入。
+- `display transceiver` 输出可用于核查非华为认证光模块（合规风险）。
+- `display health` 综合健康度可对接到本系统设备状态审计仪表板。
+""",
+        references=[
+            "https://support.huawei.com/hedex/hdx.do?docid=EDOC1100126513&id=ZH-CN_CONCEPT_0177113659",
+        ],
+        standard_ref="EDOC1100126513 设备管理命令 查看设备状态的命令",
+    ),
 ]
 
 
