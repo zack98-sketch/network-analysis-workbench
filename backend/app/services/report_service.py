@@ -152,9 +152,10 @@ class ReportService:
             lines.append("| 编号 | 严重度 | 分类 | 描述 | 来源 | 合规参考 |")
             lines.append("|---|---|---|---|---|---|")
             for r in risks:
+                desc = (r.get('description') or '').replace('|', '\\|')
                 lines.append(
                     f"| {r.get('risk_code','')} | {r.get('severity','').upper()} | {r.get('category','')} | "
-                    f"{(r.get('description') or '').replace('|','\\|')} | "
+                    f"{desc} | "
                     f"{r.get('source_ref','')} | {r.get('standard_ref','')} |"
                 )
             lines.append("")
