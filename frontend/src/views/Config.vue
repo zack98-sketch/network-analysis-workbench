@@ -98,7 +98,7 @@ onMounted(async () => {
       <div class="card-header">
         <div>
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
-            <h3 class="card-title h4">FWQ (USG6615)</h3>
+            <h3 class="card-title h4">Demo-FW (VRP)</h3>
             <span class="badge badge-info">华为 VRP</span>
             <span class="badge badge-p0">{{ configItems.filter(c => c.risk).length }} 项风险</span>
           </div>

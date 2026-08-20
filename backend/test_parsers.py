@@ -1,4 +1,4 @@
-"""Standalone end-to-end parser test against real materials in working directory.
+"""Standalone end-to-end parser test against demo materials in working directory.
 
 Runs without FastAPI/DB - just the parsers and risk engine.
 Usage: cd backend && python test_parsers.py
@@ -23,27 +23,26 @@ def section(title: str):
 
 
 def main():
-    src_materials = Path(r"d:\Codex\Huawei")
+    # 测试材料目录：相对于项目根目录的 test_materials/
+    src_materials = Path(__file__).resolve().parent.parent / "test_materials"
     if not src_materials.exists():
-        # fallback: relative from backend dir
         src_materials = Path(__file__).resolve().parent.parent.parent
 
     files_to_test = [
-        ("10.64.5.1_2026-08-17_20_08_36.log", "SSH 会话日志"),
-        ("FWQ流量.csv", "CSV 流量日志"),
+        ("demo_ssh_session.log", "SSH 会话日志"),
+        ("demo_traffic_flow.csv", "CSV 流量日志"),
     ]
 
-    # Try to find FWQ config - it may be .cfg or we pick a .log with config content
+    # 自动发现配置文件
     for candidate in src_materials.glob("*config*"):
         files_to_test.append((candidate.name, "配置文件（自动发现）"))
         break
     else:
-        # Look for any .cfg / .conf
         for candidate in list(src_materials.glob("*.cfg")) + list(src_materials.glob("*.conf")):
             files_to_test.append((candidate.name, "配置文件（自动发现）"))
             break
 
-    # Find a CHM manual for testing
+    # 自动发现 CHM 手册
     for chm in src_materials.glob("*.chm"):
         files_to_test.append((chm.name, "CHM 手册"))
         break

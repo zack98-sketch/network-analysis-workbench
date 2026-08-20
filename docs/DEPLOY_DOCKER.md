@@ -322,7 +322,7 @@ sudo ufw allow from 172.16.0.0/12 to any port 8080
 sudo ufw allow from 192.168.0.0/16 to any port 8080
 
 # 或限制特定管理机 IP
-sudo ufw allow from 10.64.5.0/24 to any port 8080
+sudo ufw allow from 10.0.0.0/24 to any port 8080
 ```
 
 ### 2. 不要暴露 8000 端口

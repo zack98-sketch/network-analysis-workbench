@@ -1,19 +1,20 @@
 #!/bin/bash
-cd /data/network-analysis-workbench/backend/data/uploads/demo-project
+# 检查已上传材料的解析结果（在 backend/data/uploads/ 目录中操作）
+cd "$(dirname "$0")/../backend/data/uploads" 2>/dev/null || { echo "uploads 目录不存在"; exit 1; }
 
 echo '=== CSV header + first 3 rows ==='
-head -4 "FWQ流量.csv" 2>/dev/null | head -c 3000
+head -4 "demo_traffic_flow.csv" 2>/dev/null | head -c 3000
 echo ''
 echo ''
-echo '=== SSH log sample (5.1 big one) - first 100 lines ==='
-head -100 "10.64.5.1_2026-08-17_20_08_36.log" | head -c 5000
+echo '=== SSH log sample - first 100 lines ==='
+head -100 "demo_ssh_session.log" | head -c 5000
 echo ''
 echo ''
 echo '=== Look for configuration display output in log files ==='
 grep -lE "display current|sysname|interface Gigabit|stp|vlan|ospf|firewall zone|security-policy|nat policy" *.log 2>/dev/null
 echo ''
-echo '=== Count commands in largest log (commands are cli lines user typed) ==='
-wc -l "10.64.5.1_2026-08-17_20_08_36.log"
+echo '=== Count commands in log ==='
+wc -l "demo_ssh_session.log"
 echo ''
-echo '=== Last 80 lines of big log (likely has display current output or config sections) ==='
-tail -80 "10.64.5.1_2026-08-17_20_08_36.log" | head -c 5000
+echo '=== Last 80 lines of log ==='
+tail -80 "demo_ssh_session.log" | head -c 5000

@@ -140,13 +140,13 @@ onMounted(async () => {
           <h4 class="h4" style="margin-bottom:10px">待处理重点 · 悬停查看整改建议</h4>
           <ul style="margin:0;padding-left:18px;color:var(--text-700);font-size:13px;line-height:1.8">
             <li class="risk-issue" data-goto="config" @click="goTo('config')" tabindex="0" role="button">
-              安全策略 <code class="text-mono">hufang</code> 未限定源区域与地址
+              安全策略 <code class="text-mono">demo-rule</code> 未限定源区域与地址
               <div class="remediation-popover">
                 <h5>整改建议</h5>
                 <pre>security-policy
- rule name hufang
+ rule name demo-rule
   source-zone trust
-  source-address 10.64.0.0/16</pre>
+  source-address 10.0.0.0/24</pre>
                 <p>依据：等保 2.0 三级 8.1.3.2 访问控制</p>
               </div>
             </li>

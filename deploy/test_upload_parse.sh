@@ -14,7 +14,7 @@ echo "PID=$PID"
 echo "=== 2. Upload a log file ==="
 curl -sf -X POST $BASE/materials \
   -F "project_id=$PID" \
-  -F "file=@/data/network-analysis-workbench/test_materials/10.64.5.1_2026-08-15_15_04_18.log"
+  -F "file=@../test_materials/demo_ssh_session.log"
 echo ""
 
 echo "=== 3. Wait for async parse ==="
@@ -26,7 +26,7 @@ curl -sf $BASE/projects/$PID/materials | python3 -m json.tool
 echo "=== 5. Upload VRP config ==="
 curl -sf -X POST $BASE/materials \
   -F "project_id=$PID" \
-  -F "file=@/data/network-analysis-workbench/test_materials/LSJF-A02-AS-S5735-01_vrp.cfg"
+  -F "file=@../test_materials/demo_switch_config.cfg"
 echo ""
 
 echo "=== 6. Wait & list ==="

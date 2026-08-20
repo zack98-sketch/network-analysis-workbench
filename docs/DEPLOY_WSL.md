@@ -25,7 +25,8 @@
 
 ```bash
 # 将项目从 Windows 磁盘复制到 WSL 用户主目录（推荐，避免 NTFS 性能问题）
-cp -r /mnt/d/Codex/Huawei/network-analysis-workbench ~/
+# <项目源挂载路径> 替换为本地 Windows 项目所在 WSL 挂载路径，例如 /mnt/d/projects
+cp -r /mnt/d/projects/network-analysis-workbench ~/
 
 # 进入项目目录
 cd ~/network-analysis-workbench
@@ -215,7 +216,7 @@ tar -czf data-backup.tar.gz data/
 
 ### 导入测试材料（批量）
 
-Windows 下的测试文件（位于 `d:\Codex\Huawei\`）可通过以下方式导入：
+Windows 下的测试文件可通过以下方式导入：
 
 **方式 1：通过 UI 上传（推荐）**
 1. 浏览器访问工作台
@@ -224,9 +225,9 @@ Windows 下的测试文件（位于 `d:\Codex\Huawei\`）可通过以下方式�
 
 **方式 2：直接拷贝 + 触发扫描**
 ```bash
-# 将 Windows 下的文件拷贝到 uploads 目录
-cp /mnt/d/Codex/Huawei/*.log /mnt/d/Codex/Huawei/*.csv /mnt/d/Codex/Huawei/*.cfg \
-   /mnt/d/Codex/Huawei/*.chm /mnt/d/Codex/Huawei/*.pdf \
+# 将 Windows 下的文件拷贝到 uploads 目录（<测试材料挂载路径> 替换为本地路径）
+cp /mnt/d/projects/test_materials/*.log /mnt/d/projects/test_materials/*.csv /mnt/d/projects/test_materials/*.cfg \
+   /mnt/d/projects/test_materials/*.chm /mnt/d/projects/test_materials/*.pdf \
    ~/network-analysis-workbench/deploy/data/uploads/
 
 # 调用扫描 API 让系统识别并入库
@@ -236,9 +237,9 @@ curl -X POST http://localhost:8080/api/v1/materials/scan \
 ```
 
 **文件命名建议**（便于自动关联设备）：
-- 日志：`{IP}_{日期}_{时间}.log`，例如 `10.64.5.1_2026-08-17_20_08_36.log`
-- 配置：`{设备名或IP}_config.cfg`，例如 `USG6000F-01.cfg`
-- 手册：`{产品型号}_文档.{chm|pdf}`，例如 `HiSecEngine_USG6000F_V600R025C10.chm`
+- 日志：`{IP}_{日期}_{时间}.log`，例如 `10.0.0.1_2026-08-17_20_08_36.log`
+- 配置：`{设备名或IP}_config.cfg`，例如 `demo_firewall_01.cfg`
+- 手册：`{产品型号}_文档.{chm|pdf}`，例如 `demo_product_manual.chm`
 
 ---
 

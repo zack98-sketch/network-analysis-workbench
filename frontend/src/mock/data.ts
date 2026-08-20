@@ -1,20 +1,20 @@
 import type { Material, RiskFinding, LogEvent, ConfigItem, TopoNode, TopoEdge, Project, Rule, DocSection } from '@/types'
 
 export const materials: Material[] = [
-  { id: 'm1', name: 'FWQ流量.csv', type: 'log', format: 'CSV', size: '24.8 MB', uploadedAt: '2026-08-19 14:30', rows: 102341, status: 'parsed' },
-  { id: 'm2', name: 'FWQ_vsys_config.cfg', type: 'config', format: 'CFG', size: '18 KB', uploadedAt: '2026-08-19 11:02', rows: 612, status: 'risk', risksCount: 2 },
-  { id: 'm3', name: '10.64.5.1_2026-08-17_20_08_36.log', type: 'log', format: 'LOG', size: '86 KB', uploadedAt: '2026-08-18 09:15', rows: 1204, status: 'parsed' },
-  { id: 'm4', name: '10.64.5.1_2026-08-18_22_14_05.log', type: 'log', format: 'LOG', size: '72 KB', uploadedAt: '2026-08-18 22:20', rows: 986, status: 'parsed' },
-  { id: 'm5', name: '10.64.5.2_ssh_session.log', type: 'log', format: 'LOG', size: '54 KB', uploadedAt: '2026-08-18 10:32', rows: 712, status: 'parsed' },
-  { id: 'm6', name: 'core_switch_syslog.log', type: 'log', format: 'LOG', size: '1.2 MB', uploadedAt: '2026-08-17 18:05', rows: 8532, status: 'parsed' },
-  { id: 'm7', name: 'HUAWEI HiSec LogAuditor1500 产品文档.chm', type: 'manual', format: 'CHM', size: '12.4 MB', uploadedAt: '2026-08-18 16:20', status: 'indexed' },
-  { id: 'm8', name: 'HCIA-Security V4.0 培训教材.pdf', type: 'training', format: 'PDF', size: '28.6 MB', uploadedAt: '2026-08-17 10:08', status: 'pending' },
-  { id: 'm9', name: '华为防火墙配置指南.pdf', type: 'manual', format: 'PDF', size: '15.2 MB', uploadedAt: '2026-08-16 15:40', status: 'indexed' },
-  { id: 'm10', name: '等保2.0三级要求解读.pdf', type: 'training', format: 'PDF', size: '8.4 MB', uploadedAt: '2026-08-15 09:10', status: 'pending' },
-  { id: 'm11', name: 'USG6000 命令参考手册.pdf', type: 'manual', format: 'PDF', size: '32.1 MB', uploadedAt: '2026-08-14 14:22', status: 'indexed' },
-  { id: 'm12', name: 'CIS Benchmark 网络设备.pdf', type: 'training', format: 'PDF', size: '4.8 MB', uploadedAt: '2026-08-13 11:50', status: 'pending' },
-  { id: 'm13', name: 'HCIE-Security 实验手册.pdf', type: 'training', format: 'PDF', size: '22.7 MB', uploadedAt: '2026-08-12 16:18', status: 'pending' },
-  { id: 'm14', name: '网络安全法合规指引.pdf', type: 'training', format: 'PDF', size: '6.3 MB', uploadedAt: '2026-08-11 10:05', status: 'pending' }
+  { id: 'm1', name: 'demo_traffic_flow.csv', type: 'log', format: 'CSV', size: '24.8 MB', uploadedAt: '2026-08-19 14:30', rows: 102341, status: 'parsed' },
+  { id: 'm2', name: 'demo_firewall_config.cfg', type: 'config', format: 'CFG', size: '18 KB', uploadedAt: '2026-08-19 11:02', rows: 612, status: 'risk', risksCount: 2 },
+  { id: 'm3', name: 'demo_fw_2026-08-17_20_08_36.log', type: 'log', format: 'LOG', size: '86 KB', uploadedAt: '2026-08-18 09:15', rows: 1204, status: 'parsed' },
+  { id: 'm4', name: 'demo_fw_2026-08-18_22_14_05.log', type: 'log', format: 'LOG', size: '72 KB', uploadedAt: '2026-08-18 22:20', rows: 986, status: 'parsed' },
+  { id: 'm5', name: 'demo_ssh_session.log', type: 'log', format: 'LOG', size: '54 KB', uploadedAt: '2026-08-18 10:32', rows: 712, status: 'parsed' },
+  { id: 'm6', name: 'demo_core_switch_syslog.log', type: 'log', format: 'LOG', size: '1.2 MB', uploadedAt: '2026-08-17 18:05', rows: 8532, status: 'parsed' },
+  { id: 'm7', name: 'demo_log_auditor_product_doc.chm', type: 'manual', format: 'CHM', size: '12.4 MB', uploadedAt: '2026-08-18 16:20', status: 'indexed' },
+  { id: 'm8', name: 'demo_security_training_chapter1.pdf', type: 'training', format: 'PDF', size: '28.6 MB', uploadedAt: '2026-08-17 10:08', status: 'pending' },
+  { id: 'm9', name: 'demo_firewall_config_guide.pdf', type: 'manual', format: 'PDF', size: '15.2 MB', uploadedAt: '2026-08-16 15:40', status: 'indexed' },
+  { id: 'm10', name: 'demo_compliance_requirements.pdf', type: 'training', format: 'PDF', size: '8.4 MB', uploadedAt: '2026-08-15 09:10', status: 'pending' },
+  { id: 'm11', name: 'demo_command_reference_manual.pdf', type: 'manual', format: 'PDF', size: '32.1 MB', uploadedAt: '2026-08-14 14:22', status: 'indexed' },
+  { id: 'm12', name: 'demo_benchmark_network_devices.pdf', type: 'training', format: 'PDF', size: '4.8 MB', uploadedAt: '2026-08-13 11:50', status: 'pending' },
+  { id: 'm13', name: 'demo_security_lab_manual.pdf', type: 'training', format: 'PDF', size: '22.7 MB', uploadedAt: '2026-08-12 16:18', status: 'pending' },
+  { id: 'm14', name: 'demo_compliance_guidelines.pdf', type: 'training', format: 'PDF', size: '6.3 MB', uploadedAt: '2026-08-11 10:05', status: 'pending' }
 ]
 
 export const risks: RiskFinding[] = [
@@ -22,9 +22,9 @@ export const risks: RiskFinding[] = [
     id: 'RISK-001',
     severity: 'p0',
     category: '安全策略',
-    description: '策略 hufang action=permit 但未指定 source-zone 与 source-address',
-    source: 'FWQ.cfg:607',
-    remediation: 'source-zone trust\nsource-address 10.64.0.0/16',
+    description: '策略 demo-rule action=permit 但未指定 source-zone 与 source-address',
+    source: 'demo_firewall_config.cfg:607',
+    remediation: 'source-zone trust\nsource-address 10.0.0.0/24',
     status: '待处理'
   },
   {
@@ -32,7 +32,7 @@ export const risks: RiskFinding[] = [
     severity: 'p0',
     category: 'SSH',
     description: 'SSH 兼容 SSH1.x 并允许弱密钥交换算法 diffie-hellman-group1',
-    source: 'FWQ.cfg:523',
+    source: 'demo_firewall_config.cfg:523',
     remediation: 'undo ssh server compatible-ssh1x enable',
     status: '待处理'
   },
@@ -41,7 +41,7 @@ export const risks: RiskFinding[] = [
     severity: 'p1',
     category: '管理平面',
     description: 'Telnet 服务未禁用，存在明文传输管理流量风险',
-    source: 'FWQ.cfg:498',
+    source: 'demo_firewall_config.cfg:498',
     remediation: 'undo telnet server enable',
     status: '待处理'
   },
@@ -49,8 +49,8 @@ export const risks: RiskFinding[] = [
     id: 'RISK-004',
     severity: 'p1',
     category: '访问控制',
-    description: '本地用户 admin 权限级别为 15 且未绑定源 IP 白名单',
-    source: 'FWQ.cfg:412',
+    description: '本地用户权限级别为 15 且未绑定源 IP 白名单',
+    source: 'demo_firewall_config.cfg:412',
     remediation: 'service-type ssh terminal\nacl 2000 inbound',
     status: '待处理'
   },
@@ -59,7 +59,7 @@ export const risks: RiskFinding[] = [
     severity: 'p1',
     category: '日志审计',
     description: '非工作时间（22:00-06:00）存在成功登录行为',
-    source: '10.64.5.1.log',
+    source: 'demo_fw.log',
     remediation: '—',
     status: '待确认'
   },
@@ -68,7 +68,7 @@ export const risks: RiskFinding[] = [
     severity: 'p2',
     category: 'SNMP',
     description: 'SNMP 团体字使用默认 public，建议改为复杂字符串',
-    source: 'FWQ.cfg:567',
+    source: 'demo_firewall_config.cfg:567',
     remediation: 'snmp-agent community read ComplexString',
     status: '建议'
   },
@@ -77,22 +77,22 @@ export const risks: RiskFinding[] = [
     severity: 'p3',
     category: '配置冗余',
     description: '存在未引用的 ACL 2001，建议清理',
-    source: 'FWQ.cfg:301',
+    source: 'demo_firewall_config.cfg:301',
     remediation: '—',
     status: '记录'
   }
 ]
 
 export const logEvents: LogEvent[] = [
-  { id: 'e1', time: '20:08:12', type: 'connect', sourceIp: '10.64.2.14', targetIp: '10.64.5.1', targetPort: 22, detail: '源 10.64.2.14 → 目标 10.64.5.1:22' },
-  { id: 'e2', time: '20:08:15', type: 'auth', user: 'admin', sourceIp: '10.64.2.14', detail: '用户 admin 通过密码认证登录' },
-  { id: 'e3', time: '20:09:03', type: 'command', user: 'admin', sourceIp: '10.64.2.14', detail: 'display security-policy all' },
-  { id: 'e4', time: '20:11:47', type: 'change', user: 'admin', sourceIp: '10.64.2.14', detail: 'security-policy rule name hufang，命中 M5 规则' },
-  { id: 'e5', time: '20:14:22', type: 'disconnect', user: 'admin', sourceIp: '10.64.2.14', detail: '会话结束，总时长 6 分 10 秒' }
+  { id: 'e1', time: '20:08:12', type: 'connect', sourceIp: '10.0.0.10', targetIp: '10.0.0.1', targetPort: 22, detail: '源 10.0.0.10 → 目标 10.0.0.1:22' },
+  { id: 'e2', time: '20:08:15', type: 'auth', user: 'demo-user', sourceIp: '10.0.0.10', detail: '用户 demo-user 通过密码认证登录' },
+  { id: 'e3', time: '20:09:03', type: 'command', user: 'demo-user', sourceIp: '10.0.0.10', detail: 'display security-policy all' },
+  { id: 'e4', time: '20:11:47', type: 'change', user: 'demo-user', sourceIp: '10.0.0.10', detail: 'security-policy rule name demo-rule，命中 M5 规则' },
+  { id: 'e5', time: '20:14:22', type: 'disconnect', user: 'demo-user', sourceIp: '10.0.0.10', detail: '会话结束，总时长 6 分 10 秒' }
 ]
 
 export const configTree: ConfigItem[] = [
-  { id: 'c1', section: 'security-policy', lineNo: 605, key: 'rule name', value: 'hufang', annotation: '定义一条名为 hufang 的安全策略规则' },
+  { id: 'c1', section: 'security-policy', lineNo: 605, key: 'rule name', value: 'demo-rule', annotation: '定义一条名为 demo-rule 的安全策略规则' },
   { id: 'c2', section: 'security-policy', lineNo: 607, key: 'source-zone', value: '—', annotation: '⚠ 未指定源安全区域，存在全区域放行风险', risk: true },
   { id: 'c3', section: 'security-policy', lineNo: 608, key: 'source-address', value: '—', annotation: '⚠ 未限定源地址，任何源均可命中该策略', risk: true },
   { id: 'c4', section: 'security-policy', lineNo: 609, key: 'destination-address', value: 'any', annotation: '目的地址为 any，允许访问任意目标' },
@@ -103,11 +103,11 @@ export const configTree: ConfigItem[] = [
 ]
 
 export const topoNodes: TopoNode[] = [
-  { id: 'n1', label: 'Ops-PC', type: 'host', left: '14%', top: '42%', ip: '10.64.2.14', source: 'SSH 会话日志' },
-  { id: 'n2', label: 'FWQ', type: 'firewall', left: '40%', top: '42%', ip: '10.64.5.1', iface: 'Vlanif100', source: 'FWQ_vsys_config.cfg' },
-  { id: 'n3', label: 'SW-Core', type: 'switch', left: '78%', top: '22%', ip: '10.64.2.14', iface: 'Vlanif10', source: '接口 description to-FWQ' },
-  { id: 'n4', label: 'Server-A', type: 'host', left: '78%', top: '42%', ip: '10.64.10.10', source: 'CSV 流量目的 IP' },
-  { id: 'n5', label: 'Server-B', type: 'host', left: '78%', top: '62%', ip: '10.64.10.11', source: 'CSV 流量目的 IP' }
+  { id: 'n1', label: 'Demo-PC', type: 'host', left: '14%', top: '42%', ip: '10.0.0.10', source: 'SSH 会话日志' },
+  { id: 'n2', label: 'Demo-FW', type: 'firewall', left: '40%', top: '42%', ip: '10.0.0.1', iface: 'Vlanif100', source: 'demo_firewall_config.cfg' },
+  { id: 'n3', label: 'Demo-SW', type: 'switch', left: '78%', top: '22%', ip: '10.0.0.2', iface: 'Vlanif10', source: '接口 description to-Demo-FW' },
+  { id: 'n4', label: 'Server-A', type: 'host', left: '78%', top: '42%', ip: '10.0.0.20', source: 'CSV 流量目的 IP' },
+  { id: 'n5', label: 'Server-B', type: 'host', left: '78%', top: '62%', ip: '10.0.0.21', source: 'CSV 流量目的 IP' }
 ]
 
 export const topoEdges: TopoEdge[] = [
@@ -216,15 +216,15 @@ export const docSections: DocSection[] = [
   {
     id: 'd1',
     title: 'security-policy 配置说明',
-    product: 'USG6000',
-    source: 'galaxy_cfg_security.html',
+    product: 'Demo-FW-Series',
+    source: 'demo_cfg_security.html',
     snippet: 'security-policy 用于配置安全策略。配置时请明确指定源安全区域、目的安全区域、源地址、目的地址、服务与动作，避免使用 any 导致过度放行。'
   },
   {
     id: 'd2',
     title: 'rule name 命令参考',
-    product: 'USG6000',
-    source: 'security_command.html',
+    product: 'Demo-FW-Series',
+    source: 'demo_security_command.html',
     snippet: '命令 rule name 用于创建安全策略规则。规则按配置顺序匹配，建议将精确规则置于宽松规则之前。'
   }
 ]

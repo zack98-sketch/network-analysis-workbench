@@ -88,8 +88,8 @@ node -v              # 需要 18+，仅首次构建前端需要；后续升级�
 ### 2.2 （首次）把 Windows 项目同步进 WSL
 
 ```powershell
-# Windows PowerShell 执行（项目源 d:\Codex\Huawei\network-analysis-workbench）
-robocopy "d:\Codex\Huawei\network-analysis-workbench" \\wsl.localhost\Kali-Linux\data\network-analysis-workbench /E /NFL /NDL /NJH /NJS /NP /XF *.pyc /XD __pycache__ node_modules .git
+# Windows PowerShell 执行（把 <项目源目录> 替换为本地项目路径）
+robocopy "<项目源目录>\network-analysis-workbench" \\wsl.localhost\Kali-Linux\data\network-analysis-workbench /E /NFL /NDL /NJH /NJS /NP /XF *.pyc /XD __pycache__ node_modules .git
 ```
 
 > 若同步 Ubuntu：把 `Kali-Linux` 改成 `Ubuntu`，目标目录同理。
@@ -178,11 +178,11 @@ bash deploy/smoke_test.sh
 
 ```
 data/uploads/demo-project/
-  ├─ 10.64.*.log                    # SSH 会话终端会话录屏
-  ├─ FWQ流量.csv                    # CSV 结构化防火墙流量
-  ├─ LSJF-A02-AS-S5735-01_vrp.cfg   # 华为 VRP 配置（S5735 交换机）
-  ├─ HCIA/HICP-Security*.pdf        # 安全培训教材
-  └─ HiSecEngine*.chm               # 产品文档（CHM）
+  ├─ demo_ssh_session.log            # SSH 会话终端会话录屏
+  ├─ demo_traffic_flow.csv           # CSV 结构化防火墙流量
+  ├─ demo_switch_config.cfg          # 交换机 VRP 配置
+  ├─ demo_security_training.pdf      # 安全培训教材
+  └─ demo_product_manual.chm         # 产品文档（CHM）
 ```
 
 在 UI：**文件上传** → 选项目 → 拖拽 → 自动解析 → 秒级完成后

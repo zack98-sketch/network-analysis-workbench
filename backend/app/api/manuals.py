@@ -435,10 +435,10 @@ SEED_MANUALS: List[Dict[str, Any]] = [
         summary="VRP 系统在 `aaa` 视图下通过 `local-user` 定义本地账号、`authentication-scheme` 指定认证模式；明文保存密码属高危配置。",
         content_md="""## AAA 视图 (VRP)
 ```
-[HUAWEI] aaa
-[HUAWEI-aaa] local-user admin password cipher <pwd> privilege level 15
-[HUAWEI-aaa] authentication-scheme sch01
-[HUAWEI-aaa-authen-sch01] authentication-mode local
+[Device] aaa
+[Device-aaa] local-user demo-user password cipher <pwd> privilege level 15
+[Device-aaa] authentication-scheme sch01
+[Device-aaa-authen-sch01] authentication-mode local
 ```
 
 ### 解析约定（配置解析依据）

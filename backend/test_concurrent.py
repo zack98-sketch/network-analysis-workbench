@@ -1,16 +1,24 @@
-"""并发上传测试 - 验证 WAL 模式修复"""
+"""并发上传测试 - 验证 WAL 模式修复
+
+Usage: cd backend && python test_concurrent.py
+前提：后端服务已启动 (uvicorn app.main:app)
+"""
 import json
 import threading
 import time
 import urllib.request
 import urllib.error
-import multipart
 import os
 import sqlite3
+from pathlib import Path
 
 BASE = "http://127.0.0.1:8000/api/v1"
-TEST_DIR = "/data/network-analysis-workbench/test_materials"
-DB = "/data/network-analysis-workbench/backend/data/workbench.db"
+# 测试材料目录：相对于项目根目录
+TEST_DIR = str(Path(__file__).resolve().parent.parent / "test_materials")
+# 数据库路径：相对于 backend 目录
+DB = str(Path(__file__).resolve().parent / "data" / "workbench.db")
+# 日志路径
+LOG_DIR = str(Path(__file__).resolve().parent / "logs")
 
 
 def http_post_json(url, data):
@@ -60,10 +68,10 @@ def main():
     print(f"项目 ID: {pid}")
 
     files = [
-        f"{TEST_DIR}/10.64.2.14_2026-08-17_20_26_17.log",
-        f"{TEST_DIR}/10.64.5.1_2026-08-17_20_08_36.log",
-        f"{TEST_DIR}/10.64.5.1_2026-08-15_15_04_18.log",
-        f"{TEST_DIR}/LSJF-A02-AS-S5735-01_vrp.cfg",
+        f"{TEST_DIR}/demo_ssh_session_01.log",
+        f"{TEST_DIR}/demo_ssh_session_02.log",
+        f"{TEST_DIR}/demo_syslog_01.log",
+        f"{TEST_DIR}/demo_switch_config.cfg",
     ]
 
     print("\n=== 2. 并发上传 4 个文件 ===")
@@ -101,7 +109,7 @@ def main():
     print(f"\n  汇总: {success_count} 成功, {failed_count} 失败, {pending_count} 进行中/卡住")
 
     print("\n=== 5. 检查 database is locked 错误 ===")
-    log_path = "/data/network-analysis-workbench/backend/logs/workbench.log"
+    log_path = f"{LOG_DIR}/workbench.log"
     with open(log_path, "r", errors="replace") as f:
         content = f.read()
     lock_count = content.count("database is locked")

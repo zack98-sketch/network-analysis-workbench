@@ -42,7 +42,7 @@ curl -sf $BASE/projects 2>&1 | python3 -c 'import sys,json;d=json.load(sys.stdin
 
 echo ""
 echo "--- [6] POST /api/v1/materials 上传演示配置 ---"
-CFG_PATH=data/uploads/demo-project/LSJF-A02-AS-S5735-01_vrp.cfg
+CFG_PATH=data/uploads/demo-project/demo_switch_config.cfg
 MID=""
 if [ -f "$CFG_PATH" -a -n "$PID" ]; then
   RESP2=$(curl -sf -X POST $BASE/materials \
