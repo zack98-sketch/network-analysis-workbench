@@ -2,9 +2,9 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { projectApi } from '@/api'
+import { projectApi, materialApi } from '@/api'
 import { useProjectStore } from '@/stores/project'
-import type { Project } from '@/types'
+import type { Project, Material } from '@/types'
 
 const router = useRouter()
 const store = useProjectStore()
@@ -26,17 +26,87 @@ const editForm = ref<{ name: string; description: string; status: ProjectStatus 
 
 const busy = ref(false)
 
+// -- 项目下材料汇总：点击卡片展开，不跳转首页
+const expandedId = ref<Project['id'] | null>(null)
+const materials = ref<Material[]>([])
+const materialsLoading = ref(false)
+
+const expandedProjectName = computed(() => {
+  const p = projects.value.find(x => x.id === expandedId.value)
+  return p?.name || ''
+})
+
 function statusBadge(s: string) {
   if (s === 'active') return { cls: 'badge-p2', text: '进行中' }
   if (s === 'archived') return { cls: 'badge-p3', text: '已归档' }
   return { cls: 'badge-p3', text: '评估中' }
 }
 
+// 材料状态文案
+function materialStatusText(s: string) {
+  const map: Record<string, string> = {
+    pending: '待解析',
+    parsing: '解析中',
+    success: '已解析',
+    parsed: '已解析',
+    indexed: '已索引',
+    risk: '有风险',
+    failed: '解析失败'
+  }
+  return map[String(s || '').toLowerCase()] || s || '—'
+}
+
+// 材料状态徽标
+function materialBadgeCls(s: string) {
+  const d = String(s || '').toLowerCase()
+  if (d === 'failed') return 'badge-p0'
+  if (d === 'risk') return 'badge-p1'
+  if (d === 'parsing' || d === 'pending') return 'badge-p3'
+  return 'badge-p2'
+}
+
+// 字节数格式化为可读大小
+function formatSize(size: any) {
+  if (size == null || size === '') return '—'
+  const n = Number(size)
+  if (!isFinite(n) || n <= 0) return String(size)
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let i = 0, v = n
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
+  return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`
+}
+
 async function loadProjects() {
   try { projects.value = await projectApi.list() } catch {}
 }
 
-function openProject(p: Project) {
+// 点击项目卡片：展开/收起该项目下的材料列表
+async function toggleMaterials(p: Project) {
+  if (expandedId.value === p.id) {
+    expandedId.value = null
+    materials.value = []
+    return
+  }
+  expandedId.value = p.id
+  materials.value = []
+  materialsLoading.value = true
+  try {
+    materials.value = await materialApi.list(p.id)
+  } catch {
+    materials.value = []
+  } finally {
+    materialsLoading.value = false
+  }
+}
+
+function collapseMaterials() {
+  expandedId.value = null
+  materials.value = []
+}
+
+// 设为当前项目并跳转首页（保留原有跳转行为）
+function setCurrentProject(p: Project, ev?: Event) {
+  ev?.stopPropagation()
   store.setProject({
     id: p.id,
     name: p.name,
@@ -65,8 +135,9 @@ async function confirmCreateProject() {
       status: newProjectForm.value.status as Project['status'],
     })
     projects.value.unshift(p)
-    openProject(p)
     newProjectDialogVisible.value = false
+    // 创建后设为当前项目并跳转首页
+    setCurrentProject(p)
   } catch {}
 }
 
@@ -117,6 +188,8 @@ async function deleteProject(p: Project, ev: Event) {
     busy.value = true
     await projectApi.remove(p.id)
     projects.value = projects.value.filter(x => x.id !== p.id)
+    // 若删除的是当前展开的项目，收起材料面板
+    if (expandedId.value === p.id) collapseMaterials()
     ElMessage.success(`项目「${p.name}」已删除`)
     if (store.currentProject?.id === p.id) {
       store.clearProject()
@@ -159,8 +232,8 @@ onMounted(loadProjects)
         v-for="p in projects"
         :key="p.id"
         class="card project-card"
-        :class="{ active: p.status === 'active' }"
-        @click="openProject(p)"
+        :class="{ active: p.status === 'active', expanded: expandedId === p.id }"
+        @click="toggleMaterials(p)"
       >
         <div class="card-header">
           <div class="project-title-group">
@@ -187,6 +260,9 @@ onMounted(loadProjects)
             <span class="muted" v-if="p.created_at">创建于 {{ new Date(p.created_at).toLocaleDateString() }}</span>
           </div>
           <div class="project-actions" @click.stop>
+            <button class="btn btn-primary btn-xs" :disabled="busy" @click="setCurrentProject(p, $event)">
+              设为当前项目
+            </button>
             <button class="btn btn-ghost btn-xs" :disabled="busy" @click="openEditProject(p, $event)">
               编辑
             </button>
@@ -195,6 +271,41 @@ onMounted(loadProjects)
             </button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 选中项目的材料汇总面板 -->
+    <div v-if="expandedId !== null" class="card materials-panel">
+      <div class="card-header">
+        <div>
+          <h3 class="card-title h4">{{ expandedProjectName }} · 材料汇总</h3>
+          <p class="card-desc">项目下已上传的材料，点击项目卡片可切换</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" @click="collapseMaterials">收起</button>
+      </div>
+      <div class="table-wrap">
+        <div v-if="materialsLoading" class="materials-tip">加载中…</div>
+        <table v-else>
+          <thead>
+            <tr>
+              <th>文件名</th>
+              <th>类型</th>
+              <th>状态</th>
+              <th>大小</th>
+              <th>上传时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="m in materials" :key="m.id">
+              <td>{{ m.name }}</td>
+              <td>{{ m.type }}</td>
+              <td><span class="badge" :class="materialBadgeCls(m.status)">{{ materialStatusText(m.status) }}</span></td>
+              <td>{{ formatSize(m.size) }}</td>
+              <td>{{ m.uploadedAt || m.created_at || '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="!materialsLoading && materials.length === 0" class="materials-tip">该项目暂无材料</div>
       </div>
     </div>
 
@@ -275,6 +386,10 @@ onMounted(loadProjects)
 .project-card.active {
   border-top: 3px solid var(--primary);
 }
+.project-card.expanded {
+  border-color: var(--primary);
+  box-shadow: 0 12px 32px rgba(15,23,42,.12);
+}
 
 .card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .project-title-group { min-width: 0; }
@@ -319,7 +434,7 @@ onMounted(loadProjects)
   font-size: 11.5px;
 }
 .project-foot-info .muted { color: var(--color-text-soft); }
-.project-actions { display: flex; gap: 8px; }
+.project-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .btn-danger-ghost {
   color: var(--color-danger);
@@ -336,4 +451,13 @@ onMounted(loadProjects)
 .empty-panel .empty h3 { margin: 0 0 4px; color: var(--color-text); font-weight: 600; font-size: 17px; }
 .empty-panel .empty p { margin: 0; }
 .empty-panel .mt { margin-top: 14px; }
+
+/* 材料汇总面板 */
+.materials-panel { margin-top: 20px; }
+.materials-tip {
+  text-align: center;
+  padding: 32px 0;
+  color: var(--color-text-soft);
+  font-size: 13px;
+}
 </style>

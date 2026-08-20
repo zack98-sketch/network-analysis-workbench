@@ -267,6 +267,21 @@ export const logApi = {
 
   correlation: async (projectId: string | number) => {
     return await api.get(`/projects/${projectId}/logs/correlation`)
+  },
+
+  /** 流量分析：返回总流量/允许/拒绝数、Top 源IP/目标IP/目标端口、协议分布 */
+  traffic: async (projectId: string | number) => {
+    return await api.get(`/projects/${projectId}/logs/traffic`)
+  },
+
+  /** 操作分析：返回总操作数、操作类型分布、活跃用户列表 */
+  operations: async (projectId: string | number) => {
+    return await api.get(`/projects/${projectId}/logs/operations`)
+  },
+
+  /** 用户行为测绘：返回用户行为时间线、异常行为告警 */
+  behavior: async (projectId: string | number) => {
+    return await api.get(`/projects/${projectId}/logs/behavior`)
   }
 }
 
@@ -369,8 +384,8 @@ export const topologyApi = {
       id: n.id,
       label: n.name || n.label || '',
       type: n.node_type || n.type || 'host',
-      left: n.pos_x != null ? String(n.pos_x) : (n.left || '50%'),
-      top: n.pos_y != null ? String(n.pos_y) : (n.top || '50%'),
+      left: n.pos_x != null ? String(n.pos_x) + '%' : (n.left || '50%'),
+      top: n.pos_y != null ? String(n.pos_y) + '%' : (n.top || '50%'),
       ip: n.ip_address || n.ip,
       iface: n.interface_desc || n.iface,
       source: n.source_material || n.source || '',
@@ -471,7 +486,22 @@ export const ruleApi = {
 
 export const reportApi = {
   generate: async (projectId: string | number, format: string): Promise<any> => {
-    return await api.post(`/projects/${projectId}/reports`, { format })
+    const res = await api.post(`/projects/${projectId}/reports/generate`, { format }) as any
+    return {
+      id: res.report_id || res.id,
+      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      project: '',
+      format: (res.format || format).toUpperCase(),
+      template: '标准模板',
+      size: '—',
+      status: res.status,
+      downloadUrl: res.download_url,
+    }
+  },
+
+  preview: async (projectId: string | number): Promise<string> => {
+    const res = await api.post(`/projects/${projectId}/reports/preview`, { format: 'html' }) as any
+    return res.html || res.content || ''
   },
 
   list: async (projectId: string | number): Promise<any[]> => {

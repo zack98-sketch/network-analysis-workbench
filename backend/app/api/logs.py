@@ -171,3 +171,313 @@ async def get_logs_correlation(
         correlations.append({"key": row[0], "value": row[0], "count": int(row[1])})
 
     return {"project_id": project_id, "by": by, "correlations": correlations}
+
+
+# 流量事件类型：permit/deny/traffic 视为流量事件
+_TRAFFIC_EVENT_TYPES = ("permit", "deny", "traffic")
+# 操作事件类型
+_OPERATION_EVENT_TYPES = ("command", "change", "auth", "connect", "disconnect")
+
+
+def _extract_protocol(ev: LogEvent) -> Optional[str]:
+    """从 LogEvent 提取协议：优先使用 _protocol 字段，其次从 detail_json 中查找。"""
+    proto = getattr(ev, "_protocol", None)
+    if proto:
+        return str(proto)
+    detail = ev.detail_json or {}
+    if isinstance(detail, dict):
+        for key in ("protocol", "proto", "protocol_name"):
+            v = detail.get(key)
+            if v is not None:
+                return str(v)
+    return None
+
+
+def _extract_target_port(ev: LogEvent) -> Optional[str]:
+    """从 LogEvent 提取目标端口：优先使用 destination_port 字段，其次从 detail_json 中查找。"""
+    port = getattr(ev, "destination_port", None)
+    if port is not None:
+        return str(port)
+    detail = ev.detail_json or {}
+    if isinstance(detail, dict):
+        for key in ("dest_port", "destination_port", "dport", "target_port"):
+            v = detail.get(key)
+            if v is not None:
+                return str(v)
+    return None
+
+
+def _top_n(counter: Dict[str, int], limit: int) -> list:
+    """对计数字典按计数倒序取前 N 个，返回 [(key, count), ...]。"""
+    return sorted(counter.items(), key=lambda x: x[1], reverse=True)[:limit]
+
+
+@router.get("/projects/{project_id}/logs/traffic")
+async def get_logs_traffic(
+    project_id: int,
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    # 查询项目所有 material 的 LogEvent
+    mat_stmt = select(Material.id).where(Material.project_id == project_id)
+    mat_res = await db.execute(mat_stmt)
+    material_ids = [row[0] for row in mat_res.all()] or [-1]
+
+    # 仅统计流量相关事件
+    stmt = (
+        select(LogEvent)
+        .where(LogEvent.material_id.in_(material_ids))
+        .where(LogEvent.event_type.in_(_TRAFFIC_EVENT_TYPES))
+        .order_by(LogEvent.timestamp.asc().nullslast(), LogEvent.id.asc())
+    )
+    res = await db.execute(stmt)
+    events = list(res.scalars().all())
+
+    permit_count = 0
+    deny_count = 0
+    source_ips: Dict[str, int] = {}
+    target_ips: Dict[str, int] = {}
+    target_ports: Dict[str, int] = {}
+    protocols: Dict[str, int] = {}
+    timeline_buckets: Dict[str, Dict[str, Any]] = {}
+
+    for ev in events:
+        et = (ev.event_type or "").lower()
+        if et == "permit":
+            permit_count += 1
+        elif et == "deny":
+            deny_count += 1
+
+        # 统计 source_ip
+        if ev.source_ip:
+            source_ips[ev.source_ip] = source_ips.get(ev.source_ip, 0) + 1
+        # 统计 target_ip
+        if ev.target_ip:
+            target_ips[ev.target_ip] = target_ips.get(ev.target_ip, 0) + 1
+        # 统计 target_port
+        port = _extract_target_port(ev)
+        if port:
+            target_ports[port] = target_ports.get(port, 0) + 1
+        # 统计 protocol
+        proto = _extract_protocol(ev)
+        if proto:
+            protocols[proto] = protocols.get(proto, 0) + 1
+        # 按小时分桶，统计 permit/deny 数量
+        if ev.timestamp:
+            key = ev.timestamp.strftime("%Y-%m-%d %H:00")
+            if key not in timeline_buckets:
+                timeline_buckets[key] = {"time": key, "permit": 0, "deny": 0}
+            if et == "permit":
+                timeline_buckets[key]["permit"] += 1
+            elif et == "deny":
+                timeline_buckets[key]["deny"] += 1
+
+    timeline = [timeline_buckets[k] for k in sorted(timeline_buckets.keys())]
+
+    return {
+        "project_id": project_id,
+        "total_flows": len(events),
+        "permit_count": permit_count,
+        "deny_count": deny_count,
+        "top_source_ips": [{"ip": k, "count": v} for k, v in _top_n(source_ips, limit)],
+        "top_target_ips": [{"ip": k, "count": v} for k, v in _top_n(target_ips, limit)],
+        "top_target_ports": [{"port": k, "count": v} for k, v in _top_n(target_ports, limit)],
+        "protocols": [{"protocol": k, "count": v} for k, v in _top_n(protocols, limit)],
+        "timeline": timeline,
+    }
+
+
+@router.get("/projects/{project_id}/logs/operations")
+async def get_logs_operations(
+    project_id: int,
+    limit: int = Query(50, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    # 查询项目所有 material 的 LogEvent
+    mat_stmt = select(Material.id).where(Material.project_id == project_id)
+    mat_res = await db.execute(mat_stmt)
+    material_ids = [row[0] for row in mat_res.all()] or [-1]
+
+    # 仅统计操作相关事件
+    stmt = (
+        select(LogEvent)
+        .where(LogEvent.material_id.in_(material_ids))
+        .where(LogEvent.event_type.in_(_OPERATION_EVENT_TYPES))
+        .order_by(LogEvent.timestamp.asc().nullslast(), LogEvent.id.asc())
+    )
+    res = await db.execute(stmt)
+    events = list(res.scalars().all())
+
+    by_type: Dict[str, int] = {}
+    users: Dict[str, int] = {}
+    devices: Dict[str, int] = {}
+    command_timeline: List[Dict[str, Any]] = []
+    auth_events: List[Dict[str, Any]] = []
+
+    for ev in events:
+        et = ev.event_type or "other"
+        by_type[et] = by_type.get(et, 0) + 1
+        if ev.user:
+            users[ev.user] = users.get(ev.user, 0) + 1
+        if ev.device:
+            devices[ev.device] = devices.get(ev.device, 0) + 1
+
+        if et == "command":
+            command_timeline.append({
+                "time": ev.timestamp.isoformat() if ev.timestamp else None,
+                "user": ev.user or "",
+                "command": ev.command or "",
+                "result": ev.result or "",
+            })
+        elif et == "auth":
+            auth_events.append({
+                "time": ev.timestamp.isoformat() if ev.timestamp else None,
+                "user": ev.user or "",
+                "source_ip": ev.source_ip or "",
+                "result": ev.result or "",
+            })
+
+    # 限制返回数量
+    command_timeline = command_timeline[:limit]
+    auth_events = auth_events[:limit]
+
+    return {
+        "project_id": project_id,
+        "total_operations": len(events),
+        "by_type": [{"type": k, "count": v} for k, v in _top_n(by_type, len(by_type))],
+        "top_users": [{"user": k, "count": v} for k, v in _top_n(users, limit)],
+        "top_devices": [{"device": k, "count": v} for k, v in _top_n(devices, limit)],
+        "command_timeline": command_timeline,
+        "auth_events": auth_events,
+    }
+
+
+# 失败登录的结果关键字
+_FAILED_RESULT_KEYWORDS = ("fail", "failed", "denied", "error", "incorrect")
+
+
+@router.get("/projects/{project_id}/logs/behavior")
+async def get_logs_behavior(
+    project_id: int,
+    session_gap_minutes: int = Query(30, ge=1, le=1440),
+    db: AsyncSession = Depends(get_db),
+):
+    # 查询项目所有 material 的 LogEvent
+    mat_stmt = select(Material.id).where(Material.project_id == project_id)
+    mat_res = await db.execute(mat_stmt)
+    material_ids = [row[0] for row in mat_res.all()] or [-1]
+
+    stmt = (
+        select(LogEvent)
+        .where(LogEvent.material_id.in_(material_ids))
+        .order_by(LogEvent.timestamp.asc().nullslast(), LogEvent.id.asc())
+    )
+    res = await db.execute(stmt)
+    events = list(res.scalars().all())
+
+    # 按 user 分组
+    by_user: Dict[str, List[LogEvent]] = {}
+    for ev in events:
+        u = ev.user or "unknown"
+        by_user.setdefault(u, []).append(ev)
+
+    users_summary: List[Dict[str, Any]] = []
+    anomalies: List[Dict[str, Any]] = []
+    session_timeline: List[Dict[str, Any]] = []
+    total_sessions = 0
+    session_gap = timedelta(minutes=session_gap_minutes)
+
+    for user, user_events in by_user.items():
+        # 排除时间戳为空的事件用于计算 first_seen/last_seen
+        ts_events = [e for e in user_events if e.timestamp]
+        first_seen = min((e.timestamp for e in ts_events), default=None)
+        last_seen = max((e.timestamp for e in ts_events), default=None)
+        source_ips = sorted({e.source_ip for e in user_events if e.source_ip})
+        devices = sorted({e.device for e in user_events if e.device})
+
+        users_summary.append({
+            "user": user,
+            "action_count": len(user_events),
+            "first_seen": first_seen.isoformat() if first_seen else None,
+            "last_seen": last_seen.isoformat() if last_seen else None,
+            "source_ips": source_ips,
+            "devices": devices,
+        })
+
+        # 异常检测1：非工作时间操作（22:00-06:00）
+        for ev in ts_events:
+            hour = ev.timestamp.hour
+            if hour >= 22 or hour < 6:
+                anomalies.append({
+                    "type": "off_hours",
+                    "description": f"非工作时间操作: {ev.event_type or 'unknown'}",
+                    "time": ev.timestamp.isoformat(),
+                    "user": user,
+                })
+
+        # 异常检测2：多次失败登录（>=3 次）
+        failed_auth = [
+            e for e in user_events
+            if (e.event_type or "").lower() == "auth"
+            and (e.result or "").lower() in _FAILED_RESULT_KEYWORDS
+        ]
+        if len(failed_auth) >= 3:
+            anomalies.append({
+                "type": "multiple_failed_auth",
+                "description": f"多次失败登录: {len(failed_auth)} 次",
+                "time": failed_auth[-1].timestamp.isoformat() if failed_auth[-1].timestamp else None,
+                "user": user,
+            })
+
+        # 异常检测3：使用多个源 IP（>3 视为可疑）
+        if len(source_ips) > 3:
+            anomalies.append({
+                "type": "multiple_source_ips",
+                "description": f"使用多个源IP: {len(source_ips)} 个",
+                "time": last_seen.isoformat() if last_seen else None,
+                "user": user,
+            })
+
+        # 划分会话：按时间间隔 session_gap
+        if ts_events:
+            ts_events_sorted = sorted(ts_events, key=lambda e: e.timestamp)
+            user_session_idx = 0
+            current_session = [ts_events_sorted[0]]
+            for ev in ts_events_sorted[1:]:
+                if ev.timestamp - current_session[-1].timestamp > session_gap:
+                    # 关闭当前会话
+                    user_session_idx += 1
+                    total_sessions += 1
+                    session_timeline.append({
+                        "session_id": f"{user}-{user_session_idx}",
+                        "user": user,
+                        "start": current_session[0].timestamp.isoformat(),
+                        "end": current_session[-1].timestamp.isoformat(),
+                        "event_count": len(current_session),
+                        "actions": sorted({(e.event_type or "unknown") for e in current_session}),
+                    })
+                    current_session = [ev]
+                else:
+                    current_session.append(ev)
+            # 处理最后一个会话
+            user_session_idx += 1
+            total_sessions += 1
+            session_timeline.append({
+                "session_id": f"{user}-{user_session_idx}",
+                "user": user,
+                "start": current_session[0].timestamp.isoformat(),
+                "end": current_session[-1].timestamp.isoformat(),
+                "event_count": len(current_session),
+                "actions": sorted({(e.event_type or "unknown") for e in current_session}),
+            })
+
+    # 异常按时间倒序排序（无时间的排在最后）
+    anomalies.sort(key=lambda x: x.get("time") or "", reverse=True)
+
+    return {
+        "project_id": project_id,
+        "total_sessions": total_sessions,
+        "users": users_summary,
+        "anomalies": anomalies,
+        "session_timeline": session_timeline,
+    }
