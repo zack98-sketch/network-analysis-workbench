@@ -24,7 +24,8 @@ if _is_sqlite:
         cur = dbapi_conn.cursor()
         cur.execute("PRAGMA journal_mode=WAL")
         cur.execute("PRAGMA synchronous=NORMAL")
-        cur.execute("PRAGMA busy_timeout=5000")
+        # 加大到 30 秒：后台解析任务长事务持锁时，5 秒不够会触发 database is locked
+        cur.execute("PRAGMA busy_timeout=30000")
         cur.execute("PRAGMA foreign_keys=ON")
         cur.close()
 
@@ -46,7 +47,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
-            await session.commit()
+            # 仅在仍有 pending 事务时才提交，避免 handler 已 commit 后又开新事务占锁
+            if session.in_transaction():
+                await session.commit()
         except Exception:
             await session.rollback()
             raise

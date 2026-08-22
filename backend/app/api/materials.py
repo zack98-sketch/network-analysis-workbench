@@ -108,6 +108,14 @@ async def _run_parse_in_background(material_id: int):
         logger.error("Background parse task crashed for material %s: %s", material_id, exc)
 
 
+def _schedule_parse(material_id: int) -> None:
+    """延迟 0.2s 再启动后台解析，避开请求 session 的写锁，防止 database is locked。"""
+    async def _delayed():
+        await asyncio.sleep(0.2)
+        await _run_parse_in_background(material_id)
+    asyncio.create_task(_delayed())
+
+
 @router.post("/materials/upload", response_model=MaterialRead, status_code=status.HTTP_201_CREATED)
 async def upload_material(
     project_id: int = Form(...),
@@ -156,7 +164,7 @@ async def upload_material(
     await db.commit()
     await db.refresh(material)
 
-    asyncio.create_task(_run_parse_in_background(material.id))
+    _schedule_parse(material.id)
 
     return _to_read(material)
 
@@ -282,7 +290,7 @@ async def upload_material_alias(
     await db.commit()
     await db.refresh(material)
 
-    asyncio.create_task(_run_parse_in_background(material.id))
+    _schedule_parse(material.id)
 
     return _to_compat(material)
 
@@ -341,7 +349,7 @@ async def reparse_material(material_id: int, db: AsyncSession = Depends(get_db))
     m.rows_parsed = 0
     await db.commit()
 
-    asyncio.create_task(_run_parse_in_background(material_id))
+    _schedule_parse(material_id)
 
     stmt2 = select(Material).where(Material.id == material_id)
     res2 = await db.execute(stmt2)
@@ -371,7 +379,7 @@ async def analyze_all_project_materials(
         m.parse_message = "已加入分析队列…"
         m.rows_parsed = 0
         triggered.append(m.id)
-        asyncio.create_task(_run_parse_in_background(m.id))
+        _schedule_parse(m.id)
     await db.commit()
 
     # Also kick audit re-run in the background after parsing finishes.
