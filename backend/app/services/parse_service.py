@@ -84,6 +84,8 @@ class ParseService:
 
             merged = self.topo_engine.merge_topology(existing_topo, new_extract)
             merged["nodes"] = self.topo_engine.assign_default_positions(merged["nodes"])
+            # 根据边图分析上下行/流量走势，生成节点说明
+            merged["nodes"] = self.topo_engine.compute_node_descriptions(merged["nodes"], merged["edges"])
             await self._save_project_topology(material.project_id, merged, db)
 
             await db.commit()

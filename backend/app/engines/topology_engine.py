@@ -439,3 +439,159 @@ class TopologyEngine:
                 result.append(out)
 
         return result
+
+    def compute_node_descriptions(self, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """分析边图，为每个节点生成上下行/流量走势说明。
+
+        根据节点的连接关系（入边=上游/上联，出边=下游/下联）和邻居类型，
+        生成如"上联防火墙，下联接入交换机，旁挂上网行为管理"的描述。
+        """
+        # 构建 id -> node 映射
+        node_map: Dict[Any, Dict[str, Any]] = {}
+        for n in nodes:
+            node_map[n.get("id")] = n
+
+        # 构建邻接关系：upstream（入边源）、downstream（出边目标）
+        upstream: Dict[Any, List[Any]] = {}
+        downstream: Dict[Any, List[Any]] = {}
+        for e in edges:
+            src = e.get("source_node")
+            tgt = e.get("target_node")
+            downstream.setdefault(src, []).append(tgt)
+            upstream.setdefault(tgt, []).append(src)
+
+        # 节点类型中文标签
+        type_label = {
+            "firewall": "防火墙",
+            "router": "路由器",
+            "switch": "交换机",
+            "host": "主机/终端",
+        }
+
+        def short_name(nid: Any) -> str:
+            n = node_map.get(nid)
+            if not n:
+                return str(nid)
+            name = n.get("name") or ""
+            # 去掉常见前缀让描述更简洁
+            name = re.sub(r"^(管理主机|客户端网段|服务器群|NextHop|VPN)\s*-?\s*", "", name)
+            ip = n.get("ip_address") or ""
+            # 如果名字像 IP 段，用网段表示
+            if re.match(r"^\d+\.\d+\.\d+\.0/\d+$", str(name)):
+                return f"网段 {name}"
+            if ip and re.match(r"^\d+\.\d+\.\d+\.0/\d+$", str(ip)):
+                return f"网段 {ip}"
+            return name or (f"IP {ip}" if ip else f"节点{nid}")
+
+        def node_type_of(nid: Any) -> str:
+            n = node_map.get(nid)
+            return (n.get("node_type") or "").lower() if n else ""
+
+        result = []
+        for n in nodes:
+            nid = n.get("id")
+            nt = (n.get("node_type") or "").lower()
+            name = (n.get("name") or "").lower()
+
+            up_ids = list(dict.fromkeys(upstream.get(nid, [])))  # 去重保序
+            down_ids = list(dict.fromkeys(downstream.get(nid, [])))
+
+            # 分类邻居：按类型分组
+            up_firewalls = [i for i in up_ids if node_type_of(i) == "firewall"]
+            up_switches = [i for i in up_ids if node_type_of(i) == "switch"]
+            up_routers = [i for i in up_ids if node_type_of(i) == "router"]
+            up_hosts = [i for i in up_ids if node_type_of(i) == "host"]
+
+            down_firewalls = [i for i in down_ids if node_type_of(i) == "firewall"]
+            down_switches = [i for i in down_ids if node_type_of(i) == "switch"]
+            down_routers = [i for i in down_ids if node_type_of(i) == "router"]
+            down_hosts = [i for i in down_ids if node_type_of(i) == "host"]
+
+            parts: List[str] = []
+
+            # 根据节点类型生成上下联描述
+            if nt == "firewall":
+                # 防火墙：上联通常是出口路由器/上游交换机，下联是核心交换机/内网
+                up_labels = [short_name(i) for i in up_routers + up_switches if i in node_map]
+                down_labels = [short_name(i) for i in down_switches + down_hosts if i in node_map]
+                side_labels = [short_name(i) for i in up_hosts if i in node_map]  # 旁挂：来自主机的管理流量
+                if up_labels:
+                    parts.append(f"上联{ '、'.join(up_labels[:2]) }")
+                if down_labels:
+                    parts.append(f"下联{ '、'.join(down_labels[:2]) }")
+                if side_labels:
+                    parts.append(f"旁挂{ '、'.join(side_labels[:1]) }（管理接入）")
+                if not parts:
+                    parts.append("安全网关（流量过滤与访问控制）")
+
+            elif nt == "router":
+                up_labels = [short_name(i) for i in up_switches + up_routers if i in node_map]
+                down_labels = [short_name(i) for i in down_switches + down_hosts if i in node_map]
+                if up_labels:
+                    parts.append(f"上联{ '、'.join(up_labels[:2]) }")
+                if down_labels:
+                    parts.append(f"下联{ '、'.join(down_labels[:2]) }")
+                if not parts:
+                    parts.append("路由节点（网间转发）")
+
+            elif nt == "switch":
+                is_core = "core" in name or "backbone" in name or "核心" in name
+                if is_core:
+                    # 核心交换机：上联防火墙/路由器，下联接入交换机，旁挂上网行为管理
+                    up_labels = [short_name(i) for i in up_firewalls + up_routers if i in node_map]
+                    down_labels = [short_name(i) for i in down_switches + down_hosts if i in node_map]
+                    side_labels = [short_name(i) for i in up_hosts + down_hosts if i in node_map]
+                    if up_labels:
+                        parts.append(f"上联{ '、'.join(up_labels[:2]) }")
+                    if down_labels:
+                        parts.append(f"下联{ '、'.join(down_labels[:2]) }")
+                    # 旁挂检测：如果有主机直连，可能是旁挂设备（如上网行为管理）
+                    host_neighbors = [short_name(i) for i in up_hosts + down_hosts if i in node_map]
+                    if host_neighbors and not down_switches:
+                        parts.append(f"旁挂{ '、'.join(host_neighbors[:1]) }")
+                    if not parts:
+                        parts.append("核心交换机（骨干转发，二/三层交换）")
+                else:
+                    # 接入交换机：上联核心交换机，下联服务器/终端
+                    up_labels = [short_name(i) for i in up_switches + up_firewalls + up_routers if i in node_map]
+                    down_labels = [short_name(i) for i in down_hosts + down_switches if i in node_map]
+                    if up_labels:
+                        parts.append(f"上联{ '、'.join(up_labels[:2]) }")
+                    if down_labels:
+                        parts.append(f"下联{ '、'.join(down_labels[:2]) }")
+                    if not parts:
+                        parts.append("接入交换机（终端接入，二层交换）")
+
+            elif nt == "host":
+                up_labels = [short_name(i) for i in up_switches + up_firewalls + up_routers if i in node_map]
+                if up_labels:
+                    parts.append(f"接入{ '、'.join(up_labels[:1]) }")
+                else:
+                    parts.append("终端节点")
+                # 如果是服务器群/网段聚合节点
+                if "网段" in (n.get("name") or "") or "/24" in (n.get("ip_address") or ""):
+                    parts.append("（该网段内多台主机流量聚合）")
+
+            else:
+                if up_ids:
+                    parts.append(f"上联{ '、'.join(short_name(i) for i in up_ids[:2] if i in node_map) }")
+                if down_ids:
+                    parts.append(f"下联{ '、'.join(short_name(i) for i in down_ids[:2] if i in node_map) }")
+                if not parts:
+                    parts.append("网络节点")
+
+            # 补充流量统计
+            total_edges = len(up_ids) + len(down_ids)
+            if total_edges > 0:
+                parts.append(f"（共{total_edges}条连接）")
+
+            out = dict(n)
+            desc = "，".join(parts)
+            # 保留已有描述中的补充信息
+            existing_desc = n.get("interface_desc") or ""
+            if existing_desc and existing_desc not in desc:
+                desc = f"{desc}；原始: {existing_desc}"
+            out["interface_desc"] = desc
+            result.append(out)
+
+        return result
