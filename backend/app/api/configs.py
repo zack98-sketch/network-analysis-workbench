@@ -81,6 +81,7 @@ def _ci_to_read(ci: ConfigItem) -> ConfigItemRead:
 
 
 @router.get("/materials/{material_id}/config-tree", response_model=ConfigTreeResponse)
+@router.get("/materials/{material_id}/config/tree", response_model=ConfigTreeResponse)
 async def get_config_tree(
     material_id: int,
     section_type: Optional[str] = Query(None),
@@ -128,6 +129,7 @@ async def get_config_tree(
 
 
 @router.get("/materials/{material_id}/diff", response_model=ConfigDiffResponse)
+@router.get("/materials/{material_id}/config/diff", response_model=ConfigDiffResponse)
 async def get_config_diff(
     material_id: int,
     compare_with: int = Query(..., alias="compare_with"),

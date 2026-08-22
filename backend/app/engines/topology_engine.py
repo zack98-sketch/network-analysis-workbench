@@ -166,13 +166,15 @@ class TopologyEngine:
     def extract_from_logs(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
         nodes: Dict[str, Dict[str, Any]] = {}
         edges: List[Dict[str, Any]] = []
+        edge_keys: set = set()
 
         for ev in events:
             et = str(ev.get("event_type", "")).lower()
             src = ev.get("source_ip")
             dev = ev.get("device") or ev.get("target_ip")
 
-            if et in ("ssh", "connect", "login", "auth") and src and dev:
+            # 兼容 ssh_session parser 输出的 "connection" 事件类型
+            if et in ("ssh", "connect", "connection", "login", "auth") and src and dev:
                 dev_key = f"dev-{dev}"
                 if dev_key not in nodes:
                     nid = self._gen_id()
@@ -181,7 +183,7 @@ class TopologyEngine:
                         "node_type": "switch",
                         "name": str(dev),
                         "ip_address": dev if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", str(dev)) else None,
-                        "interface_desc": None,
+                        "interface_desc": "被管理设备（SSH/登录会话目标）",
                         "source_material": "log:device",
                     }
                 host_key = f"host-{src}"
@@ -190,85 +192,117 @@ class TopologyEngine:
                     nodes[host_key] = {
                         "id": hid,
                         "node_type": self._make_host_type(),
-                        "name": f"Host-{src}",
+                        "name": f"管理主机-{src}",
                         "ip_address": src,
-                        "interface_desc": None,
+                        "interface_desc": "运维/管理终端（SSH客户端源）",
                         "source_material": "log:ssh-source",
                     }
-                edges.append({
-                    "id": self._gen_id(),
-                    "source_node": nodes[host_key]["id"],
-                    "target_node": nodes[dev_key]["id"],
-                    "edge_type": "ssh_session",
-                    "bandwidth": None,
-                    "source_material": f"log:{ev.get('line_no', '?')}",
-                })
+                ek = (nodes[host_key]["id"], nodes[dev_key]["id"], "ssh_session")
+                if ek not in edge_keys:
+                    edge_keys.add(ek)
+                    edges.append({
+                        "id": self._gen_id(),
+                        "source_node": nodes[host_key]["id"],
+                        "target_node": nodes[dev_key]["id"],
+                        "edge_type": "ssh_session",
+                        "bandwidth": None,
+                        "source_material": f"log:{ev.get('line_no', '?')}",
+                    })
 
         return {"nodes": list(nodes.values()), "edges": edges}
 
+    @staticmethod
+    def _ip_to_subnet(ip: str, prefix: int = 24) -> str:
+        """将 IP 归并到 /24 网段，用于节点聚合。"""
+        m = re.match(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$", str(ip))
+        if not m:
+            return str(ip)
+        if prefix == 24:
+            return f"{m.group(1)}.{m.group(2)}.{m.group(3)}.0/24"
+        return str(ip)
+
     def extract_from_csv_traffic(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """从 CSV 流量日志提取拓扑：按 /24 网段聚合主机，生成防火墙为中心的流量边。"""
         nodes: Dict[str, Dict[str, Any]] = {}
         edges: List[Dict[str, Any]] = []
+        edge_flow_count: Dict[tuple, int] = {}
 
         fw_id = self._gen_id()
-        fw_name = "Firewall-Core"
+        fw_name = "防火墙(流量汇聚点)"
         nodes[fw_name] = {
             "id": fw_id,
             "node_type": "firewall",
             "name": fw_name,
             "ip_address": None,
-            "interface_desc": "Traffic aggregation point",
+            "interface_desc": "所有流量经过的安全网关，上联网络出口、下联内网交换机",
             "source_material": "traffic:synthesized",
         }
 
-        seen_dst = set()
+        src_subnets: Dict[str, Dict[str, Any]] = {}
+        dst_subnets: Dict[str, Dict[str, Any]] = {}
+
         for ev in events:
             dst = ev.get("target_ip") or ev.get("dst")
-            if not dst:
-                continue
-            if dst in seen_dst:
-                continue
-            seen_dst.add(dst)
-            host_key = f"dst-{dst}"
-            hid = self._gen_id()
-            nodes[host_key] = {
-                "id": hid,
-                "node_type": self._make_host_type(),
-                "name": f"Server-{dst}",
-                "ip_address": dst,
-                "interface_desc": None,
-                "source_material": "traffic:dst",
-            }
+            src = ev.get("source_ip") or ev.get("src")
+            bytes_val = ev.get("_bytes") or ev.get("bytes") or 0
+            try:
+                bytes_val = int(bytes_val)
+            except (ValueError, TypeError):
+                bytes_val = 0
+
+            if dst:
+                subnet = self._ip_to_subnet(dst)
+                if subnet not in dst_subnets:
+                    did = self._gen_id()
+                    dst_subnets[subnet] = {
+                        "id": did,
+                        "ip_count": 0,
+                        "bytes": 0,
+                    }
+                    nodes[f"dst-{subnet}"] = {
+                        "id": did,
+                        "node_type": "host",
+                        "name": f"服务器群 {subnet}",
+                        "ip_address": subnet,
+                        "interface_desc": "下联服务器网段（防火墙保护的内网区域）",
+                        "source_material": "traffic:dst-aggregated",
+                    }
+                dst_subnets[subnet]["ip_count"] += 1
+                dst_subnets[subnet]["bytes"] += bytes_val
+                ek = (fw_id, nodes[f"dst-{subnet}"]["id"], "traffic_flow")
+                edge_flow_count[ek] = edge_flow_count.get(ek, 0) + 1
+
+            if src:
+                subnet = self._ip_to_subnet(src)
+                if subnet not in src_subnets:
+                    sid = self._gen_id()
+                    src_subnets[subnet] = {
+                        "id": sid,
+                        "ip_count": 0,
+                        "bytes": 0,
+                    }
+                    nodes[f"src-{subnet}"] = {
+                        "id": sid,
+                        "node_type": "host",
+                        "name": f"客户端网段 {subnet}",
+                        "ip_address": subnet,
+                        "interface_desc": "上联防火墙的客户端/访客网段",
+                        "source_material": "traffic:src-aggregated",
+                    }
+                src_subnets[subnet]["ip_count"] += 1
+                src_subnets[subnet]["bytes"] += bytes_val
+                ek2 = (nodes[f"src-{subnet}"]["id"], fw_id, "traffic_flow")
+                edge_flow_count[ek2] = edge_flow_count.get(ek2, 0) + 1
+
+        for (src_id, dst_id, etype), count in edge_flow_count.items():
             edges.append({
                 "id": self._gen_id(),
-                "source_node": fw_id,
-                "target_node": hid,
-                "edge_type": "traffic_flow",
-                "bandwidth": None,
+                "source_node": src_id,
+                "target_node": dst_id,
+                "edge_type": etype,
+                "bandwidth": f"{count} flows",
                 "source_material": "traffic:aggregated",
             })
-
-            src = ev.get("source_ip") or ev.get("src")
-            if src:
-                src_key = f"src-{src}"
-                if src_key not in nodes:
-                    sid = self._gen_id()
-                    nodes[src_key] = {
-                        "id": sid,
-                        "node_type": self._make_host_type(),
-                        "name": f"Client-{src}",
-                        "ip_address": src,
-                        "interface_desc": None,
-                        "source_material": "traffic:src",
-                    }
-                edges.append({
-                    "id": self._gen_id(),
-                    "source_node": nodes[src_key]["id"],
-                    "target_node": fw_id,
-                    "edge_type": "traffic_flow",
-                    "bandwidth": None,
-                    "source_material": "traffic:aggregated",
-                })
 
         return {"nodes": list(nodes.values()), "edges": edges}
 

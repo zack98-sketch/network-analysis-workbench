@@ -40,7 +40,7 @@ function registerNodeRef(nodeId: string | number, el: any) {
 }
 
 function getNodeCenter(nodeId: string | number) {
-  const n = nodes.value.find(x => x.id === nodeId)
+  const n = nodes.value.find(x => String(x.id) === String(nodeId))
   if (!n) return { x: 0, y: 0 }
   const left = parseFloat(n.left) / 100 * canvasSize.value.width
   const top = parseFloat(n.top) / 100 * canvasSize.value.height
