@@ -126,59 +126,73 @@ async def recheck_risks(project_id: int, db: AsyncSession = Depends(get_db)):
     log_events: List[Dict[str, Any]] = []
     config_trees: List[Dict[str, Any]] = []
 
-    scanned = 0
-    for mid in material_ids:
-        log_stmt = select(LogEvent).where(LogEvent.material_id == mid).order_by(LogEvent.id)
+    # 单次查询所有 LogEvent（按 material_id 分组），消除 N+1
+    if material_ids:
+        log_stmt = (
+            select(LogEvent)
+            .where(LogEvent.material_id.in_(material_ids))
+            .order_by(LogEvent.material_id, LogEvent.id)
+        )
         log_res = await db.execute(log_stmt)
-        les = list(log_res.scalars().all())
-        for le in les:
-            log_events.append({
-                "timestamp": le.timestamp.isoformat() if le.timestamp else None,
-                "event_type": le.event_type,
-                "source_ip": le.source_ip,
-                "target_ip": le.target_ip,
-                "user": le.user,
-                "device": le.device,
-                "command": le.command,
-                "result": le.result,
-                "detail_json": le.detail_json,
-                "raw_line": le.raw_line,
-                "line_no": le.line_no,
-            })
+        log_by_mid: Dict[int, List[Any]] = {}
+        for le in log_res.scalars().all():
+            log_by_mid.setdefault(le.material_id, []).append(le)
+        for mid in material_ids:
+            for le in log_by_mid.get(mid, []):
+                log_events.append({
+                    "timestamp": le.timestamp.isoformat() if le.timestamp else None,
+                    "event_type": le.event_type,
+                    "source_ip": le.source_ip,
+                    "target_ip": le.target_ip,
+                    "user": le.user,
+                    "device": le.device,
+                    "command": le.command,
+                    "result": le.result,
+                    "detail_json": le.detail_json,
+                    "raw_line": le.raw_line,
+                    "line_no": le.line_no,
+                })
 
-        ci_stmt = select(ConfigItem).where(ConfigItem.material_id == mid).order_by(ConfigItem.id)
+        # 单次查询所有 ConfigItem（按 material_id 分组），消除 N+1
+        ci_stmt = (
+            select(ConfigItem)
+            .where(ConfigItem.material_id.in_(material_ids))
+            .order_by(ConfigItem.material_id, ConfigItem.id)
+        )
         ci_res = await db.execute(ci_stmt)
-        cis = list(ci_res.scalars().all())
-        scanned += 1
-        if not cis:
-            continue
-
-        sections_map: Dict[tuple, List[Any]] = {}
-        device_name = None
-        for ci in cis:
-            if device_name is None:
-                device_name = ci.device_name
-            key = (ci.section_type or "", ci.section_name or "")
-            sections_map.setdefault(key, []).append({
-                "id": ci.id,
-                "line_no": ci.line_no,
-                "raw_line": ci.raw_line,
-                "key": ci.key,
-                "value": ci.value,
-                "indent_level": ci.indent_level,
-                "annotation": ci.annotation,
-                "doc_ref": ci.doc_ref,
-                "is_risk": ci.is_risk,
-                "risk_level": ci.risk_level.value if ci.risk_level else "none",
+        ci_by_mid: Dict[int, List[Any]] = {}
+        for ci in ci_res.scalars().all():
+            ci_by_mid.setdefault(ci.material_id, []).append(ci)
+        for mid in material_ids:
+            cis = ci_by_mid.get(mid, [])
+            if not cis:
+                continue
+            sections_map: Dict[tuple, List[Any]] = {}
+            device_name = None
+            for ci in cis:
+                if device_name is None:
+                    device_name = ci.device_name
+                key = (ci.section_type or "", ci.section_name or "")
+                sections_map.setdefault(key, []).append({
+                    "id": ci.id,
+                    "line_no": ci.line_no,
+                    "raw_line": ci.raw_line,
+                    "key": ci.key,
+                    "value": ci.value,
+                    "indent_level": ci.indent_level,
+                    "annotation": ci.annotation,
+                    "doc_ref": ci.doc_ref,
+                    "is_risk": ci.is_risk,
+                    "risk_level": ci.risk_level.value if ci.risk_level else "none",
+                })
+            sections = []
+            for (st, sn), items in sections_map.items():
+                sections.append({"section_type": st, "section_name": sn, "items": items})
+            config_trees.append({
+                "material_id": mid,
+                "device_name": device_name,
+                "sections": sections,
             })
-        sections = []
-        for (st, sn), items in sections_map.items():
-            sections.append({"section_type": st, "section_name": sn, "items": items})
-        config_trees.append({
-            "material_id": mid,
-            "device_name": device_name,
-            "sections": sections,
-        })
 
     project_ctx = {
         "project_id": project_id,
@@ -201,10 +215,11 @@ async def recheck_risks(project_id: int, db: AsyncSession = Depends(get_db)):
         "low": Severity.LOW,
         "info": Severity.LOW,
     }
-    inserted = []
+    # 批量插入：一次性 add_all + 单次 flush，避免逐行 flush+refresh 长事务持锁
+    inserted_objs: List[RiskFinding] = []
     for f in findings:
         sev = sev_map.get((f.get("severity") or "").lower(), Severity.MEDIUM)
-        rf = RiskFinding(
+        inserted_objs.append(RiskFinding(
             project_id=project_id,
             material_id=None,
             risk_code=f.get("risk_code", "RISK-000"),
@@ -215,14 +230,13 @@ async def recheck_risks(project_id: int, db: AsyncSession = Depends(get_db)):
             remediation_cmd=f.get("remediation_cmd"),
             standard_ref=f.get("standard_ref"),
             status=RiskStatus.OPEN,
-        )
-        db.add(rf)
-        inserted.append(rf)
+        ))
+    if inserted_objs:
+        db.add_all(inserted_objs)
+        await db.flush()
     await db.commit()
-    for r in inserted:
-        await db.refresh(r)
 
-    return [_to_read(r) for r in inserted]
+    return [_to_read(r) for r in inserted_objs]
 
 
 @router.patch("/risks/{risk_id}/status", response_model=RiskFindingRead)
@@ -338,55 +352,65 @@ async def project_config_audit(
     by_section: Dict[str, Dict[str, Any]] = {}
     by_device: Dict[str, Dict[str, Any]] = {}
 
-    for mid, _fname, _dname in mat_rows:
-        ci_stmt = select(ConfigItem).where(ConfigItem.material_id == mid).order_by(ConfigItem.id)
-        ci_res = await db.execute(ci_stmt)
-        cis = list(ci_res.scalars().all())
-        if not cis:
-            continue
+    # 单次查询所有 ConfigItem（按 material_id 分组），消除 N+1
+    if material_ids:
+        ci_all_stmt = (
+            select(ConfigItem)
+            .where(ConfigItem.material_id.in_(material_ids))
+            .order_by(ConfigItem.material_id, ConfigItem.id)
+        )
+        ci_all_res = await db.execute(ci_all_stmt)
+        ci_by_mid: Dict[int, List[Any]] = {}
+        for ci in ci_all_res.scalars().all():
+            ci_by_mid.setdefault(ci.material_id, []).append(ci)
 
-        sections_map: Dict[tuple, List[Any]] = {}
-        device_name = None
-        for ci in cis:
-            if device_name is None and ci.device_name:
-                device_name = ci.device_name
-            all_ci_ids.append(ci.id)
-            # Aggregate by section
-            s_label = f"{ci.section_type or 'root'}"
-            if ci.section_name:
-                s_label += f":{ci.section_name}"
-            sec_agg = by_section.setdefault(s_label, {"total": 0, "risk": 0})
-            sec_agg["total"] += 1
-            if ci.is_risk:
-                sec_agg["risk"] += 1
-            # Aggregate by device
-            dev_key = ci.device_name or f"material-{mid}"
-            dev_agg = by_device.setdefault(dev_key, {"total": 0, "risk": 0})
-            dev_agg["total"] += 1
-            if ci.is_risk:
-                dev_agg["risk"] += 1
-            # Build sections
-            key = (ci.section_type or "", ci.section_name or "")
-            sections_map.setdefault(key, []).append({
-                "id": ci.id,
-                "line_no": ci.line_no,
-                "raw_line": ci.raw_line,
-                "key": ci.key,
-                "value": ci.value,
-                "indent_level": ci.indent_level or 0,
-                "annotation": ci.annotation,
-                "doc_ref": ci.doc_ref,
-                "is_risk": bool(ci.is_risk),
-                "risk_level": ci.risk_level.value if ci.risk_level and hasattr(ci.risk_level, "value") else str(ci.risk_level or "none"),
+        for mid, _fname, _dname in mat_rows:
+            cis = ci_by_mid.get(mid, [])
+            if not cis:
+                continue
+
+            sections_map: Dict[tuple, List[Any]] = {}
+            device_name = None
+            for ci in cis:
+                if device_name is None and ci.device_name:
+                    device_name = ci.device_name
+                all_ci_ids.append(ci.id)
+                # Aggregate by section
+                s_label = f"{ci.section_type or 'root'}"
+                if ci.section_name:
+                    s_label += f":{ci.section_name}"
+                sec_agg = by_section.setdefault(s_label, {"total": 0, "risk": 0})
+                sec_agg["total"] += 1
+                if ci.is_risk:
+                    sec_agg["risk"] += 1
+                # Aggregate by device
+                dev_key = ci.device_name or f"material-{mid}"
+                dev_agg = by_device.setdefault(dev_key, {"total": 0, "risk": 0})
+                dev_agg["total"] += 1
+                if ci.is_risk:
+                    dev_agg["risk"] += 1
+                # Build sections
+                key = (ci.section_type or "", ci.section_name or "")
+                sections_map.setdefault(key, []).append({
+                    "id": ci.id,
+                    "line_no": ci.line_no,
+                    "raw_line": ci.raw_line,
+                    "key": ci.key,
+                    "value": ci.value,
+                    "indent_level": ci.indent_level or 0,
+                    "annotation": ci.annotation,
+                    "doc_ref": ci.doc_ref,
+                    "is_risk": bool(ci.is_risk),
+                    "risk_level": ci.risk_level.value if ci.risk_level and hasattr(ci.risk_level, "value") else str(ci.risk_level or "none"),
+                })
+            sections = []
+            for (st, sn), items in sections_map.items():
+                sections.append({"section_type": st, "section_name": sn, "items": items})
+            config_trees.append({
+                "material_id": mid,
+                "device_name": device_name,
+                "sections": sections,
             })
-        sections = []
-        for (st, sn), items in sections_map.items():
-            sections.append({"section_type": st, "section_name": sn, "items": items})
-        config_trees.append({
-            "material_id": mid,
-            "device_name": device_name,
-            "sections": sections,
-        })
 
     # Run config analysis via engine
     ctx = {
@@ -433,10 +457,11 @@ async def project_config_audit(
         f for f in findings
         if (f.get("category") or "") in ("config", "config_security", "compliance", "")
     ]
-    inserted_reads = []
+    # 批量插入：一次性 add_all + 单次 flush，避免逐行 flush+refresh 长事务持锁
+    inserted_objs: List[RiskFinding] = []
     for f in config_findings:
         sev = sev_map.get((f.get("severity") or "").lower(), Severity.MEDIUM)
-        rf = RiskFinding(
+        inserted_objs.append(RiskFinding(
             project_id=project_id,
             material_id=None,
             risk_code=f.get("risk_code", "CFG-AUDIT"),
@@ -447,12 +472,12 @@ async def project_config_audit(
             remediation_cmd=f.get("remediation_cmd"),
             standard_ref=f.get("standard_ref"),
             status=RiskStatus.OPEN,
-        )
-        db.add(rf)
+        ))
+    if inserted_objs:
+        db.add_all(inserted_objs)
         await db.flush()
-        await db.refresh(rf)
-        inserted_reads.append(_to_read(rf))
     await db.commit()
+    inserted_reads = [_to_read(r) for r in inserted_objs]
 
     return ConfigAuditSummary(
         project_id=project_id,
@@ -517,8 +542,13 @@ async def project_traffic_audit(
     logon_events = 0
     command_events = 0
 
-    for mid, _fname, _dname in mat_rows:
-        le_stmt = select(LogEvent).where(LogEvent.material_id == mid).order_by(LogEvent.id)
+    # 单次查询所有 LogEvent（按 material_id 分组），消除 N+1
+    if material_ids:
+        le_stmt = (
+            select(LogEvent)
+            .where(LogEvent.material_id.in_(material_ids))
+            .order_by(LogEvent.material_id, LogEvent.id)
+        )
         le_res = await db.execute(le_stmt)
         for le in le_res.scalars().all():
             ev = {
@@ -585,12 +615,13 @@ async def project_traffic_audit(
         "info": Severity.LOW,
     }
     kept_categories = {"log", "log_audit", "traffic", "traffic_anomaly", "compliance", None, ""}
-    inserted_reads = []
+    # 批量插入：一次性 add_all + 单次 flush，避免逐行 flush+refresh 长事务持锁
+    inserted_objs: List[RiskFinding] = []
     for f in findings:
         if (f.get("category") or "") not in kept_categories and (f.get("category") or "") != "":
             continue
         sev = sev_map.get((f.get("severity") or "").lower(), Severity.MEDIUM)
-        rf = RiskFinding(
+        inserted_objs.append(RiskFinding(
             project_id=project_id,
             material_id=None,
             risk_code=f.get("risk_code", "TRF-AUDIT"),
@@ -601,12 +632,12 @@ async def project_traffic_audit(
             remediation_cmd=f.get("remediation_cmd"),
             standard_ref=f.get("standard_ref"),
             status=RiskStatus.OPEN,
-        )
-        db.add(rf)
+        ))
+    if inserted_objs:
+        db.add_all(inserted_objs)
         await db.flush()
-        await db.refresh(rf)
-        inserted_reads.append(_to_read(rf))
     await db.commit()
+    inserted_reads = [_to_read(r) for r in inserted_objs]
 
     # Sort top-N helpers
     def top_n(counter: Dict[str, int], n: int = 10):

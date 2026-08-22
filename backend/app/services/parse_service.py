@@ -102,6 +102,8 @@ class ParseService:
 
     async def _save_log_events(self, project_id: int, material_id: int, events: List[Dict[str, Any]], db: AsyncSession) -> None:
         await db.execute(delete(LogEvent).where(LogEvent.material_id == material_id))
+        from datetime import datetime as _dt
+        objs: List[LogEvent] = []
         for idx, ev in enumerate(events):
             detail = ev.get("detail_json")
             detail_text = ev.get("detail")
@@ -115,12 +117,11 @@ class ParseService:
                         detail[k.lstrip("_")] = ev[k]
             ts = ev.get("timestamp")
             if isinstance(ts, str) and ts:
-                from datetime import datetime
                 try:
-                    ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    ts = _dt.fromisoformat(ts.replace("Z", "+00:00"))
                 except Exception:
                     ts = None
-            db.add(LogEvent(
+            objs.append(LogEvent(
                 project_id=project_id,
                 material_id=material_id,
                 timestamp=ts,
@@ -138,18 +139,21 @@ class ParseService:
                 raw_line=ev.get("raw_line"),
                 line_no=ev.get("line_no") if ev.get("line_no") is not None else (idx + 1),
             ))
+        # 批量 add + 单次 flush，避免逐行写库长事务持锁导致 database is locked
+        db.add_all(objs)
         await db.flush()
 
     async def _save_config_items(self, project_id: int, material_id: int, tree: Dict[str, Any], db: AsyncSession) -> None:
         await db.execute(delete(ConfigItem).where(ConfigItem.material_id == material_id))
         device_name = tree.get("device_name")
         sections = tree.get("sections", []) if isinstance(tree, dict) else []
+        objs: List[ConfigItem] = []
         for section in sections:
             stype = section.get("section_type")
             sname = section.get("section_name")
             items = section.get("items", [])
             for item in items:
-                db.add(ConfigItem(
+                objs.append(ConfigItem(
                     project_id=project_id,
                     material_id=material_id,
                     device_name=device_name,
@@ -165,12 +169,14 @@ class ParseService:
                     is_risk=bool(item.get("is_risk")),
                     risk_level=item.get("risk_level") or "none",
                 ))
+        db.add_all(objs)
         await db.flush()
 
     async def _save_doc_index(self, project_id: int, material_id: int, entries: List[Dict[str, Any]], db: AsyncSession) -> None:
         await db.execute(delete(DocIndex).where(DocIndex.material_id == material_id))
+        objs: List[DocIndex] = []
         for entry in entries:
-            db.add(DocIndex(
+            objs.append(DocIndex(
                 project_id=project_id,
                 material_id=material_id,
                 title=entry.get("title"),
@@ -179,6 +185,7 @@ class ParseService:
                 config_keywords=entry.get("config_keywords"),
                 page_no=entry.get("page_no"),
             ))
+        db.add_all(objs)
         await db.flush()
 
     async def _gather_project_context(self, project_id: int, db: AsyncSession) -> Dict[str, Any]:
@@ -189,52 +196,73 @@ class ParseService:
         log_events: List[Dict[str, Any]] = []
         config_trees: List[Dict[str, Any]] = []
 
-        for mid in material_ids:
-            log_stmt = select(LogEvent).where(LogEvent.material_id == mid).order_by(LogEvent.id)
+        # 单次查询所有 material 的 LogEvent（按 material_id 分组），消除 N+1
+        if material_ids:
+            log_stmt = (
+                select(LogEvent)
+                .where(LogEvent.material_id.in_(material_ids))
+                .order_by(LogEvent.material_id, LogEvent.id)
+            )
             log_res = await db.execute(log_stmt)
+            log_by_mid: Dict[int, List[Any]] = {}
             for le in log_res.scalars().all():
-                log_events.append({
-                    "timestamp": le.timestamp.isoformat() if le.timestamp else None,
-                    "event_type": le.event_type,
-                    "source_ip": le.source_ip,
-                    "target_ip": le.target_ip,
-                    "user": le.user,
-                    "device": le.device,
-                    "command": le.command,
-                    "result": le.result,
-                    "detail_json": le.detail_json,
-                    "raw_line": le.raw_line,
-                    "line_no": le.line_no,
-                })
+                log_by_mid.setdefault(le.material_id, []).append(le)
+            for mid in material_ids:
+                for le in log_by_mid.get(mid, []):
+                    log_events.append({
+                        "timestamp": le.timestamp.isoformat() if le.timestamp else None,
+                        "event_type": le.event_type,
+                        "source_ip": le.source_ip,
+                        "target_ip": le.target_ip,
+                        "user": le.user,
+                        "device": le.device,
+                        "command": le.command,
+                        "result": le.result,
+                        "detail_json": le.detail_json,
+                        "raw_line": le.raw_line,
+                        "line_no": le.line_no,
+                    })
 
-            ci_stmt = select(ConfigItem).where(ConfigItem.material_id == mid).order_by(ConfigItem.id)
+            # 单次查询所有 material 的 ConfigItem（按 material_id 分组），消除 N+1
+            ci_stmt = (
+                select(ConfigItem)
+                .where(ConfigItem.material_id.in_(material_ids))
+                .order_by(ConfigItem.material_id, ConfigItem.id)
+            )
             ci_res = await db.execute(ci_stmt)
-            sections_dict: Dict[tuple, List[Any]] = {}
-            device_name = None
+            ci_by_mid: Dict[int, List[Any]] = {}
             for ci in ci_res.scalars().all():
-                if device_name is None:
-                    device_name = ci.device_name
-                key = (ci.section_type or "", ci.section_name or "")
-                sections_dict.setdefault(key, []).append({
-                    "id": ci.id,
-                    "line_no": ci.line_no,
-                    "raw_line": ci.raw_line,
-                    "key": ci.key,
-                    "value": ci.value,
-                    "indent_level": ci.indent_level,
-                    "annotation": ci.annotation,
-                    "doc_ref": ci.doc_ref,
-                    "is_risk": ci.is_risk,
-                    "risk_level": ci.risk_level.value if ci.risk_level else "none",
+                ci_by_mid.setdefault(ci.material_id, []).append(ci)
+            for mid in material_ids:
+                cis = ci_by_mid.get(mid, [])
+                if not cis:
+                    continue
+                sections_dict: Dict[tuple, List[Any]] = {}
+                device_name = None
+                for ci in cis:
+                    if device_name is None:
+                        device_name = ci.device_name
+                    key = (ci.section_type or "", ci.section_name or "")
+                    sections_dict.setdefault(key, []).append({
+                        "id": ci.id,
+                        "line_no": ci.line_no,
+                        "raw_line": ci.raw_line,
+                        "key": ci.key,
+                        "value": ci.value,
+                        "indent_level": ci.indent_level,
+                        "annotation": ci.annotation,
+                        "doc_ref": ci.doc_ref,
+                        "is_risk": ci.is_risk,
+                        "risk_level": ci.risk_level.value if ci.risk_level else "none",
+                    })
+                sections = []
+                for (st, sn), items in sections_dict.items():
+                    sections.append({"section_type": st, "section_name": sn, "items": items})
+                config_trees.append({
+                    "material_id": mid,
+                    "device_name": device_name,
+                    "sections": sections,
                 })
-            sections = []
-            for (st, sn), items in sections_dict.items():
-                sections.append({"section_type": st, "section_name": sn, "items": items})
-            config_trees.append({
-                "material_id": mid,
-                "device_name": device_name,
-                "sections": sections,
-            })
 
         return {
             "project_id": project_id,
@@ -262,9 +290,10 @@ class ParseService:
             "low": Severity.LOW,
             "info": Severity.LOW,
         }
+        objs: List[RiskFinding] = []
         for f in findings:
             sev = sev_map.get((f.get("severity") or "").lower(), Severity.MEDIUM)
-            db.add(RiskFinding(
+            objs.append(RiskFinding(
                 project_id=project_id,
                 material_id=material_id,
                 risk_code=f.get("risk_code", "RISK-000"),
@@ -276,6 +305,7 @@ class ParseService:
                 standard_ref=f.get("standard_ref"),
                 status=RiskStatus.OPEN,
             ))
+        db.add_all(objs)
         await db.flush()
 
     async def _get_project_topology(self, project_id: int, db: AsyncSession) -> Dict[str, Any]:
@@ -312,7 +342,11 @@ class ParseService:
         await db.execute(delete(TopoEdge).where(TopoEdge.project_id == project_id))
         await db.execute(delete(TopoNode).where(TopoNode.project_id == project_id))
 
-        id_rewrite = {}
+        # 批量插入节点：一次性 add_all + 单次 flush，再统一 refresh 拿自增 id
+        # 这是之前 database is locked 的根因（逐行 flush+refresh 长事务持锁）
+        id_rewrite: Dict[Any, int] = {}
+        node_objs: List[TopoNode] = []
+        node_keys: List[Any] = []
         for n in topo.get("nodes", []):
             new_node = TopoNode(
                 project_id=project_id,
@@ -324,11 +358,16 @@ class ParseService:
                 pos_y=float(n.get("pos_y") or 0.0),
                 source_material=n.get("source_material"),
             )
-            db.add(new_node)
-            await db.flush()
-            await db.refresh(new_node)
-            id_rewrite[n.get("id")] = new_node.id
+            node_objs.append(new_node)
+            node_keys.append(n.get("id"))
 
+        if node_objs:
+            db.add_all(node_objs)
+            await db.flush()  # 单次 flush，所有节点一次性拿到 id
+            for key, obj in zip(node_keys, node_objs):
+                id_rewrite[key] = obj.id
+
+        edge_objs: List[TopoEdge] = []
         for e in topo.get("edges", []):
             old_src = e.get("source_node")
             old_tgt = e.get("target_node")
@@ -336,12 +375,17 @@ class ParseService:
             new_tgt = id_rewrite.get(old_tgt, old_tgt)
             if new_src is None or new_tgt is None:
                 continue
-            db.add(TopoEdge(
-                project_id=project_id,
-                source_node=int(new_src),
-                target_node=int(new_tgt),
-                edge_type=e.get("edge_type"),
-                bandwidth=e.get("bandwidth"),
-                source_material=e.get("source_material"),
-            ))
-        await db.flush()
+            try:
+                edge_objs.append(TopoEdge(
+                    project_id=project_id,
+                    source_node=int(new_src),
+                    target_node=int(new_tgt),
+                    edge_type=e.get("edge_type"),
+                    bandwidth=e.get("bandwidth"),
+                    source_material=e.get("source_material"),
+                ))
+            except (TypeError, ValueError):
+                continue
+        if edge_objs:
+            db.add_all(edge_objs)
+            await db.flush()

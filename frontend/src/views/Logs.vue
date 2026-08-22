@@ -170,6 +170,15 @@ function exportCSV() {
   }
 }
 
+// 格式化字节数
+function formatBytes(n: number): string {
+  if (n == null || n === 0) return '0 B'
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
+}
+
 // 重新解析所有日志材料
 async function handleReparse() {
   const logMaterials = materials.value.filter(m => m.type === 'log')
@@ -281,23 +290,115 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Tab 3: 流量分析 -->
+    <!-- Tab 3: 流量分析（五元组联合 + 行为分析） -->
     <div v-else-if="activeTab === 'traffic'">
       <p v-if="trafficLoading" class="text-muted">加载中...</p>
       <template v-else-if="traffic">
-        <!-- 统计卡片 -->
+        <!-- 统计卡片：总流数 / 允许 / 拒绝 / 上行 / 下行 -->
         <div class="stat-grid">
           <div class="card stat-card">
             <p class="stat-label">总流量数</p>
-            <p class="stat-value">{{ traffic.total ?? 0 }}</p>
+            <p class="stat-value">{{ traffic.total_flows ?? traffic.total ?? 0 }}</p>
           </div>
           <div class="card stat-card">
-            <p class="stat-label">允许数</p>
-            <p class="stat-value stat-allow">{{ traffic.allowed ?? 0 }}</p>
+            <p class="stat-label">允许 (permit)</p>
+            <p class="stat-value stat-allow">{{ traffic.permit_count ?? traffic.allowed ?? 0 }}</p>
           </div>
           <div class="card stat-card">
-            <p class="stat-label">拒绝数</p>
-            <p class="stat-value stat-deny">{{ traffic.denied ?? 0 }}</p>
+            <p class="stat-label">拒绝 (deny)</p>
+            <p class="stat-value stat-deny">{{ traffic.deny_count ?? traffic.denied ?? 0 }}</p>
+          </div>
+          <div class="card stat-card">
+            <p class="stat-label">上行字节</p>
+            <p class="stat-value stat-up">{{ formatBytes(traffic.total_up_bytes ?? 0) }}</p>
+          </div>
+          <div class="card stat-card">
+            <p class="stat-label">下行字节</p>
+            <p class="stat-value stat-down">{{ formatBytes(traffic.total_down_bytes ?? 0) }}</p>
+          </div>
+        </div>
+
+        <!-- 五元组联合流量表（核心） -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title h4">五元组联合流量分析</h3>
+              <p class="card-desc">按 (源IP, 目的IP, 源端口, 目的端口, 协议) 联合聚合，含上下行与成功判断</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>源 IP</th><th>源端口</th><th>→</th>
+                  <th>目的 IP</th><th>目的端口</th><th>协议</th>
+                  <th>允许</th><th>拒绝</th><th>总命中</th>
+                  <th>上行</th><th>下行</th><th>状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="(traffic.top_flows || []).length === 0">
+                  <td colspan="12" class="text-muted">暂无五元组流数据</td>
+                </tr>
+                <tr v-for="(f, i) in (traffic.top_flows || [])" :key="'flow' + i">
+                  <td class="cell-mono">{{ f.src_ip || '—' }}</td>
+                  <td class="cell-mono">{{ f.src_port || '—' }}</td>
+                  <td style="color:#94a3b8">→</td>
+                  <td class="cell-mono">{{ f.dst_ip || '—' }}</td>
+                  <td class="cell-mono">{{ f.dst_port || '—' }}</td>
+                  <td>{{ f.protocol || '—' }}</td>
+                  <td style="color:#16a34a">{{ f.permit || 0 }}</td>
+                  <td style="color:#dc2626">{{ f.deny || 0 }}</td>
+                  <td><b>{{ f.total || 0 }}</b></td>
+                  <td class="cell-mono">{{ formatBytes(f.up_bytes || 0) }}</td>
+                  <td class="cell-mono">{{ formatBytes(f.down_bytes || 0) }}</td>
+                  <td>
+                    <span v-if="f.success" class="badge badge-info">成功</span>
+                    <span v-else class="badge badge-p3">未成功</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 行为分析告警 -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title h4">行为分析告警</h3>
+              <p class="card-desc">基于五元组流量检测端口扫描、高频拒绝等异常行为</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>类型</th><th>风险</th><th>描述</th><th>源 IP</th><th>目的 IP</th><th>端口/次数</th></tr></thead>
+              <tbody>
+                <tr v-if="(traffic.behaviors || []).length === 0">
+                  <td colspan="6" class="text-muted">未检测到异常行为</td>
+                </tr>
+                <tr v-for="(b, i) in (traffic.behaviors || [])" :key="'beh' + i">
+                  <td>
+                    <span class="badge" :class="b.type === 'port_scan' ? 'badge-p3' : 'badge-p2'">
+                      {{ b.type === 'port_scan' ? '端口扫描' : b.type === 'frequent_deny' ? '高频拒绝' : b.type }}
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge" :class="b.severity === 'high' ? 'badge-p3' : b.severity === 'medium' ? 'badge-p2' : 'badge-info'">
+                      {{ b.severity || 'medium' }}
+                    </span>
+                  </td>
+                  <td>{{ b.description || '—' }}</td>
+                  <td class="cell-mono">{{ b.src_ip || '—' }}</td>
+                  <td class="cell-mono">{{ b.dst_ip || '—' }}</td>
+                  <td class="cell-mono">
+                    <span v-if="b.port_count">{{ b.port_count }} 个端口</span>
+                    <span v-else-if="b.deny_count">{{ b.deny_count }} 次拒绝</span>
+                    <span v-else>—</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -382,11 +483,11 @@ onMounted(async () => {
               <table>
                 <thead><tr><th>协议</th><th>次数</th></tr></thead>
                 <tbody>
-                  <tr v-for="(it, i) in (traffic.protocol_distribution || [])" :key="'pr' + i">
+                  <tr v-for="(it, i) in (traffic.protocols || traffic.protocol_distribution || [])" :key="'pr' + i">
                     <td>{{ it.protocol || it.name || it.key || '—' }}</td>
                     <td>{{ it.count || it.value || 0 }}</td>
                   </tr>
-                  <tr v-if="(traffic.protocol_distribution || []).length === 0"><td colspan="2" class="text-muted">暂无数据</td></tr>
+                  <tr v-if="(traffic.protocols || traffic.protocol_distribution || []).length === 0"><td colspan="2" class="text-muted">暂无数据</td></tr>
                 </tbody>
               </table>
             </div>
@@ -404,7 +505,15 @@ onMounted(async () => {
         <div class="stat-grid">
           <div class="card stat-card">
             <p class="stat-label">总操作数</p>
-            <p class="stat-value">{{ operations?.total ?? 0 }}</p>
+            <p class="stat-value">{{ operations?.total_operations ?? operations?.total ?? 0 }}</p>
+          </div>
+          <div class="card stat-card">
+            <p class="stat-label">会话数</p>
+            <p class="stat-value">{{ behavior?.total_sessions ?? 0 }}</p>
+          </div>
+          <div class="card stat-card">
+            <p class="stat-label">异常告警</p>
+            <p class="stat-value stat-deny">{{ (behavior?.anomalies || []).length }}</p>
           </div>
         </div>
 
@@ -421,11 +530,11 @@ onMounted(async () => {
               <table>
                 <thead><tr><th>类型</th><th>次数</th></tr></thead>
                 <tbody>
-                  <tr v-for="(it, i) in (operations?.type_distribution || operations?.operation_types || [])" :key="'op' + i">
+                  <tr v-for="(it, i) in (operations?.by_type || operations?.type_distribution || [])" :key="'op' + i">
                     <td>{{ it.type || it.name || it.key || '—' }}</td>
                     <td>{{ it.count || it.value || 0 }}</td>
                   </tr>
-                  <tr v-if="(operations?.type_distribution || operations?.operation_types || []).length === 0">
+                  <tr v-if="(operations?.by_type || operations?.type_distribution || []).length === 0">
                     <td colspan="2" class="text-muted">暂无数据</td>
                   </tr>
                 </tbody>
@@ -445,13 +554,13 @@ onMounted(async () => {
               <table>
                 <thead><tr><th>用户</th><th>操作次数</th><th>首次时间</th><th>最后时间</th></tr></thead>
                 <tbody>
-                  <tr v-for="(u, i) in (operations?.active_users || operations?.top_users || [])" :key="'u' + i">
+                  <tr v-for="(u, i) in (behavior?.users || operations?.top_users || [])" :key="'u' + i">
                     <td>{{ u.user || u.name || u.key || '—' }}</td>
-                    <td>{{ u.count || u.operations || u.value || 0 }}</td>
-                    <td class="cell-mono">{{ u.first_time || u.first_seen || '—' }}</td>
-                    <td class="cell-mono">{{ u.last_time || u.last_seen || '—' }}</td>
+                    <td>{{ u.action_count || u.count || u.operations || u.value || 0 }}</td>
+                    <td class="cell-mono">{{ u.first_seen || u.first_time || '—' }}</td>
+                    <td class="cell-mono">{{ u.last_seen || u.last_time || '—' }}</td>
                   </tr>
-                  <tr v-if="(operations?.active_users || operations?.top_users || []).length === 0">
+                  <tr v-if="(behavior?.users || operations?.top_users || []).length === 0">
                     <td colspan="4" class="text-muted">暂无数据</td>
                   </tr>
                 </tbody>
@@ -460,20 +569,20 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- 用户行为时间线 -->
+        <!-- 会话时间线（用户行为测绘） -->
         <div class="card">
           <div class="card-header">
             <div>
-              <h3 class="card-title h4">用户行为时间线</h3>
-              <p class="card-desc">按时间梳理用户操作</p>
+              <h3 class="card-title h4">会话时间线</h3>
+              <p class="card-desc">按时间间隔划分用户会话，展示操作轨迹</p>
             </div>
           </div>
           <div class="timeline">
-            <p v-if="(behavior?.timeline || []).length === 0" class="text-muted">暂无数据</p>
-            <div class="timeline-item" v-for="(b, idx) in (behavior?.timeline || [])" :key="'bt' + idx">
-              <p class="timeline-time">{{ b.time || b.timestamp || '—' }}</p>
-              <p class="timeline-title">{{ b.user || '未知用户' }}</p>
-              <p class="timeline-desc">{{ b.action || b.detail || b.description || '' }}</p>
+            <p v-if="(behavior?.session_timeline || behavior?.timeline || []).length === 0" class="text-muted">暂无会话数据</p>
+            <div class="timeline-item" v-for="(s, idx) in (behavior?.session_timeline || behavior?.timeline || [])" :key="'sess' + idx">
+              <p class="timeline-time">{{ s.start || s.time || '—' }} → {{ s.end || '—' }}</p>
+              <p class="timeline-title">{{ s.user || '未知用户' }} · 会话 {{ s.session_id || (idx + 1) }}</p>
+              <p class="timeline-desc">{{ s.event_count || 0 }} 条事件 · 操作类型: {{ (s.actions || []).join(', ') || '—' }}</p>
             </div>
           </div>
         </div>
@@ -483,18 +592,22 @@ onMounted(async () => {
           <div class="card-header">
             <div>
               <h3 class="card-title h4">异常行为告警</h3>
-              <p class="card-desc">检测到的可疑行为</p>
+              <p class="card-desc">检测非工作时间操作、多次失败登录、多源 IP 等可疑行为</p>
             </div>
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>时间</th><th>用户</th><th>行为</th><th>风险</th></tr></thead>
+              <thead><tr><th>时间</th><th>用户</th><th>类型</th><th>描述</th></tr></thead>
               <tbody>
                 <tr v-for="(a, i) in (behavior?.anomalies || behavior?.alerts || [])" :key="'al' + i">
                   <td class="cell-mono">{{ a.time || a.timestamp || '—' }}</td>
                   <td>{{ a.user || '—' }}</td>
-                  <td>{{ a.action || a.behavior || a.detail || '' }}</td>
-                  <td><span class="badge badge-p3">{{ a.severity || a.risk || 'medium' }}</span></td>
+                  <td>
+                    <span class="badge" :class="a.type === 'off_hours' ? 'badge-p2' : a.type === 'multiple_failed_auth' ? 'badge-p3' : 'badge-info'">
+                      {{ a.type === 'off_hours' ? '非工作时间' : a.type === 'multiple_failed_auth' ? '多次失败登录' : a.type === 'multiple_source_ips' ? '多源IP' : a.type || '异常' }}
+                    </span>
+                  </td>
+                  <td>{{ a.description || a.action || a.detail || '' }}</td>
                 </tr>
                 <tr v-if="(behavior?.anomalies || behavior?.alerts || []).length === 0">
                   <td colspan="4" class="text-muted">暂无异常</td>
@@ -547,5 +660,13 @@ onMounted(async () => {
 
 .stat-deny {
   color: #dc2626;
+}
+
+.stat-up {
+  color: #2563eb;
+}
+
+.stat-down {
+  color: #7c3aed;
 }
 </style>

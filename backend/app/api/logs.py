@@ -241,6 +241,14 @@ async def get_logs_traffic(
     protocols: Dict[str, int] = {}
     timeline_buckets: Dict[str, Dict[str, Any]] = {}
 
+    # 五元组联合聚合：(src_ip, dst_ip, src_port, dst_port, protocol) -> 流统计
+    five_tuple_flows: Dict[tuple, Dict[str, Any]] = {}
+    # 行为分析：源 IP 扫描的目标端口集合
+    src_port_scan: Dict[str, set] = {}
+    # 上下行字节统计
+    total_up_bytes = 0
+    total_down_bytes = 0
+
     for ev in events:
         et = (ev.event_type or "").lower()
         if et == "permit":
@@ -248,21 +256,16 @@ async def get_logs_traffic(
         elif et == "deny":
             deny_count += 1
 
-        # 统计 source_ip
         if ev.source_ip:
             source_ips[ev.source_ip] = source_ips.get(ev.source_ip, 0) + 1
-        # 统计 target_ip
         if ev.target_ip:
             target_ips[ev.target_ip] = target_ips.get(ev.target_ip, 0) + 1
-        # 统计 target_port
         port = _extract_target_port(ev)
         if port:
             target_ports[port] = target_ports.get(port, 0) + 1
-        # 统计 protocol
         proto = _extract_protocol(ev)
         if proto:
             protocols[proto] = protocols.get(proto, 0) + 1
-        # 按小时分桶，统计 permit/deny 数量
         if ev.timestamp:
             key = ev.timestamp.strftime("%Y-%m-%d %H:00")
             if key not in timeline_buckets:
@@ -272,17 +275,96 @@ async def get_logs_traffic(
             elif et == "deny":
                 timeline_buckets[key]["deny"] += 1
 
+        # 五元组联合聚合
+        src = ev.source_ip or "-"
+        dst = ev.target_ip or "-"
+        dst_port = port or "-"
+        proto = proto or "-"
+        src_port = None
+        if ev.detail_json and isinstance(ev.detail_json, dict):
+            src_port = ev.detail_json.get("src_port") or ev.detail_json.get("sport")
+        src_port = src_port or "-"
+        tuple_key = (src, dst, str(src_port), str(dst_port), proto)
+        if tuple_key not in five_tuple_flows:
+            five_tuple_flows[tuple_key] = {
+                "src_ip": src if src != "-" else None,
+                "dst_ip": dst if dst != "-" else None,
+                "src_port": str(src_port) if src_port != "-" else None,
+                "dst_port": str(dst_port) if dst_port != "-" else None,
+                "protocol": proto if proto != "-" else None,
+                "permit": 0,
+                "deny": 0,
+                "total": 0,
+                "bytes": 0,
+                "up_bytes": 0,
+                "down_bytes": 0,
+                "success": False,
+            }
+        flow = five_tuple_flows[tuple_key]
+        flow["total"] += 1
+        if et == "permit":
+            flow["permit"] += 1
+            flow["success"] = True
+        elif et == "deny":
+            flow["deny"] += 1
+        # 字节统计（上下行）
+        b = 0
+        if ev.detail_json and isinstance(ev.detail_json, dict):
+            b = int(ev.detail_json.get("bytes") or ev.detail_json.get("_bytes") or 0)
+            total_up_bytes += int(ev.detail_json.get("tx_bytes") or 0)
+            total_down_bytes += int(ev.detail_json.get("rx_bytes") or 0)
+        flow["bytes"] += b
+        flow["up_bytes"] += int((ev.detail_json or {}).get("tx_bytes", 0)) if isinstance(ev.detail_json, dict) else 0
+        flow["down_bytes"] += int((ev.detail_json or {}).get("rx_bytes", 0)) if isinstance(ev.detail_json, dict) else 0
+
+        # 端口扫描检测：单源 IP 命中多个不同目标端口
+        if ev.source_ip and port:
+            src_port_scan.setdefault(ev.source_ip, set()).add(port)
+
     timeline = [timeline_buckets[k] for k in sorted(timeline_buckets.keys())]
+
+    # 行为分析：端口扫描、异常外联
+    behaviors: List[Dict[str, Any]] = []
+    for src_ip, ports in src_port_scan.items():
+        if len(ports) >= 10:
+            behaviors.append({
+                "type": "port_scan",
+                "severity": "high",
+                "description": f"源 IP {src_ip} 扫描了 {len(ports)} 个不同目标端口，疑似端口扫描",
+                "src_ip": src_ip,
+                "port_count": len(ports),
+            })
+
+    # 高频被拒流（疑似攻击）
+    for tuple_key, flow in five_tuple_flows.items():
+        if flow["deny"] >= 20:
+            behaviors.append({
+                "type": "frequent_deny",
+                "severity": "medium",
+                "description": f"五元组流被拒绝 {flow['deny']} 次: {flow['src_ip']}:{flow['src_port']} -> {flow['dst_ip']}:{flow['dst_port']} ({flow['protocol']})",
+                "src_ip": flow["src_ip"],
+                "dst_ip": flow["dst_ip"],
+                "dst_port": flow["dst_port"],
+                "deny_count": flow["deny"],
+            })
+
+    # 排序五元组流：按总命中数倒序
+    sorted_flows = sorted(five_tuple_flows.values(), key=lambda x: x["total"], reverse=True)
+    top_flows = sorted_flows[:limit]
 
     return {
         "project_id": project_id,
         "total_flows": len(events),
         "permit_count": permit_count,
         "deny_count": deny_count,
+        "total_up_bytes": total_up_bytes,
+        "total_down_bytes": total_down_bytes,
         "top_source_ips": [{"ip": k, "count": v} for k, v in _top_n(source_ips, limit)],
         "top_target_ips": [{"ip": k, "count": v} for k, v in _top_n(target_ips, limit)],
         "top_target_ports": [{"port": k, "count": v} for k, v in _top_n(target_ports, limit)],
         "protocols": [{"protocol": k, "count": v} for k, v in _top_n(protocols, limit)],
+        "top_flows": top_flows,
+        "behaviors": behaviors,
         "timeline": timeline,
     }
 

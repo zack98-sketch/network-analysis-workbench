@@ -27,6 +27,14 @@ const addNodeDialogVisible = ref(false)
 const newNodeForm = ref({ label: '', type: 'host' as 'firewall' | 'switch' | 'host' })
 const newNodePosition = ref({ left: '50%', top: '50%' })
 
+// ============ 缩放/平移交互 ============
+const scale = ref(1)
+const panOffset = ref({ x: 0, y: 0 })
+const isPanning = ref(false)
+const panStart = ref({ x: 0, y: 0, ox: 0, oy: 0 })
+const MIN_SCALE = 0.3
+const MAX_SCALE = 3
+
 const shapeIcons: Record<string, string> = {
   host: '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
   firewall: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
@@ -39,6 +47,7 @@ function registerNodeRef(nodeId: string | number, el: any) {
   if (el) nodeRefs.value[String(nodeId)] = el as HTMLElement
 }
 
+// 计算节点中心坐标（考虑缩放和平移）
 function getNodeCenter(nodeId: string | number) {
   const n = nodes.value.find(x => String(x.id) === String(nodeId))
   if (!n) return { x: 0, y: 0 }
@@ -47,15 +56,82 @@ function getNodeCenter(nodeId: string | number) {
   const el = nodeRefs.value[String(nodeId)]
   const w = el?.offsetWidth || 100
   const h = el?.offsetHeight || 80
+  // SVG 也在 transform 层内部，所以直接用未变换坐标即可
   return { x: left + w / 2, y: top + h / 2 }
 }
 
 function updateCanvasSize() {
   if (canvasRef.value) {
     const rect = canvasRef.value.getBoundingClientRect()
-    canvasSize.value = { width: rect.width, height: rect.height }
+    canvasSize.value = { width: rect.width / scale.value, height: rect.height / scale.value }
   }
 }
+
+// 鼠标滚轮缩放
+function onWheel(e: WheelEvent) {
+  if (!canvasRef.value) return
+  e.preventDefault()
+  const rect = canvasRef.value.getBoundingClientRect()
+  // 鼠标在画布中的位置（相对画布左上角）
+  const mouseX = e.clientX - rect.left
+  const mouseY = e.clientY - rect.top
+  const oldScale = scale.value
+  // 缩放因子
+  const delta = e.deltaY > 0 ? 0.9 : 1.1
+  let newScale = oldScale * delta
+  newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale))
+  // 保持鼠标指向的画布点不变：调整 panOffset
+  // newOffset = mouseX - (mouseX - oldOffset) * (newScale / oldScale)
+  panOffset.value.x = mouseX - (mouseX - panOffset.value.x) * (newScale / oldScale)
+  panOffset.value.y = mouseY - (mouseY - panOffset.value.y) * (newScale / oldScale)
+  scale.value = newScale
+  updateCanvasSize()
+}
+
+function zoomIn() {
+  scale.value = Math.min(MAX_SCALE, scale.value * 1.2)
+  updateCanvasSize()
+}
+function zoomOut() {
+  scale.value = Math.max(MIN_SCALE, scale.value / 1.2)
+  updateCanvasSize()
+}
+function zoomReset() {
+  scale.value = 1
+  panOffset.value = { x: 0, y: 0 }
+  updateCanvasSize()
+}
+
+// 画布拖拽平移（在 select 工具下，点击画布空白区域并拖动）
+function onCanvasMouseDown(e: MouseEvent) {
+  // 仅在 select 工具下且点击的是画布本身（非节点）时启动平移
+  if (activeTool.value !== 'select') return
+  const target = e.target as HTMLElement
+  // 如果点击的是节点或节点内部元素，不启动平移（由 onNodeMouseDown 处理拖拽节点）
+  if (target.closest('.topo-node')) return
+  if (target.closest('line')) return
+  isPanning.value = true
+  panStart.value = { x: e.clientX, y: e.clientY, ox: panOffset.value.x, oy: panOffset.value.y }
+  document.addEventListener('mousemove', onPanMove)
+  document.addEventListener('mouseup', onPanUp)
+}
+
+function onPanMove(e: MouseEvent) {
+  if (!isPanning.value) return
+  panOffset.value.x = panStart.value.ox + (e.clientX - panStart.value.x)
+  panOffset.value.y = panStart.value.oy + (e.clientY - panStart.value.y)
+}
+
+function onPanUp() {
+  isPanning.value = false
+  document.removeEventListener('mousemove', onPanMove)
+  document.removeEventListener('mouseup', onPanUp)
+}
+
+const transformStyle = computed(() => ({
+  transform: `translate(${panOffset.value.x}px, ${panOffset.value.y}px) scale(${scale.value})`,
+  transformOrigin: '0 0',
+}))
 
 async function loadTopology() {
   try {
@@ -103,9 +179,12 @@ async function exportImage() {
 function onCanvasClick(e: MouseEvent) {
   if (activeTool.value === 'addNode') {
     const rect = canvasRef.value!.getBoundingClientRect()
-    const xPct = ((e.clientX - rect.left) / rect.width * 100).toFixed(1)
-    const yPct = ((e.clientY - rect.top) / rect.height * 100).toFixed(1)
-    newNodePosition.value = { left: xPct + '%', top: yPct + '%' }
+    // 考虑缩放和平移：将屏幕坐标转换为画布内坐标
+    const localX = (e.clientX - rect.left - panOffset.value.x) / scale.value
+    const localY = (e.clientY - rect.top - panOffset.value.y) / scale.value
+    const xPct = (localX / rect.width * 100).toFixed(1)
+    const yPct = (localY / rect.height * 100).toFixed(1)
+    newNodePosition.value = { left: Math.max(0, Math.min(95, parseFloat(xPct))) + '%', top: Math.max(0, Math.min(90, parseFloat(yPct))) + '%' }
     newNodeForm.value = { label: '', type: 'host' }
     addNodeDialogVisible.value = true
   }
@@ -170,6 +249,7 @@ function onEdgeClick(idx: number, e: MouseEvent) {
 function onNodeMouseDown(nodeId: string | number, e: MouseEvent) {
   if (activeTool.value !== 'select') return
   e.preventDefault()
+  e.stopPropagation()
   draggingNodeId.value = nodeId
   const el = nodeRefs.value[String(nodeId)]
   if (el && canvasRef.value) {
@@ -186,8 +266,11 @@ function onNodeMouseDown(nodeId: string | number, e: MouseEvent) {
 function onMouseMove(e: MouseEvent) {
   if (!draggingNodeId.value || !canvasRef.value) return
   const canvasRect = canvasRef.value.getBoundingClientRect()
-  const newX = e.clientX - canvasRect.left - dragOffset.value.x
-  const newY = e.clientY - canvasRect.top - dragOffset.value.y
+  // 考虑缩放和平移：将屏幕坐标转换为画布内坐标
+  const localX = (e.clientX - canvasRect.left - panOffset.value.x) / scale.value
+  const localY = (e.clientY - canvasRect.top - panOffset.value.y) / scale.value
+  const newX = localX - dragOffset.value.x
+  const newY = localY - dragOffset.value.y
   const xPct = Math.max(0, Math.min(95, (newX / canvasRect.width * 100)))
   const yPct = Math.max(0, Math.min(90, (newY / canvasRect.height * 100)))
   const node = nodes.value.find(n => n.id === draggingNodeId.value)
@@ -211,6 +294,7 @@ function onMouseUp() {
 function onLabelDblClick(nodeId: string | number, e: MouseEvent) {
   if (activeTool.value !== 'select') return
   e.preventDefault()
+  e.stopPropagation()
   const target = e.target as HTMLElement
   target.contentEditable = 'true'
   target.focus()
@@ -256,6 +340,10 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
   if (updateTimer.value) clearTimeout(updateTimer.value)
+  document.removeEventListener('mousemove', onPanMove)
+  document.removeEventListener('mouseup', onPanUp)
+  document.removeEventListener('mousemove', onMouseMove)
+  document.removeEventListener('mouseup', onMouseUp)
 })
 
 watch(() => props.projectId, () => {
@@ -279,11 +367,18 @@ defineExpose({ resetLayout, exportImage, loadTopology })
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="t.icon"></svg>
           {{ t.label }}
         </button>
+        <!-- 缩放控制 -->
+        <div class="zoom-controls">
+          <button class="zoom-btn" @click="zoomOut" title="缩小">−</button>
+          <span class="zoom-level">{{ Math.round(scale * 100) }}%</span>
+          <button class="zoom-btn" @click="zoomIn" title="放大">+</button>
+          <button class="zoom-btn reset" @click="zoomReset" title="重置">⟲</button>
+        </div>
         <div style="margin-left:auto;display:flex;gap:8px">
           <button class="btn btn-ghost btn-sm" @click="resetLayout">重置布局</button>
           <button class="btn btn-secondary btn-sm" @click="exportImage">导出图片</button>
         </div>
-        <div class="topo-hint" v-if="activeTool === 'select'">拖拽节点调整位置，双击标签重命名</div>
+        <div class="topo-hint" v-if="activeTool === 'select'">拖拽节点调整位置，双击标签重命名；滚轮缩放，拖拽空白平移</div>
         <div class="topo-hint" v-else-if="activeTool === 'addNode'">点击画布空白处添加节点</div>
         <div class="topo-hint" v-else-if="activeTool === 'addEdge'">
           {{ edgeStartNodeId ? '点击第二个节点完成连线' : '先点击起始节点' }}
@@ -296,39 +391,44 @@ defineExpose({ resetLayout, exportImage, loadTopology })
       ref="canvasRef"
       class="topology-canvas"
       @click="onCanvasClick"
-      :style="{ cursor: activeTool === 'addNode' ? 'crosshair' : activeTool === 'select' ? 'default' : 'pointer' }"
+      @wheel="onWheel"
+      @mousedown="onCanvasMouseDown"
+      :style="{ cursor: activeTool === 'addNode' ? 'crosshair' : activeTool === 'select' ? (isPanning ? 'grabbing' : 'grab') : 'pointer' }"
     >
-      <svg width="100%" height="100%" :style="{ position: 'absolute', inset: 0, pointerEvents: activeTool === 'delete' ? 'auto' : 'none' }">
-        <line
-          v-for="(e, i) in edges"
-          :key="`${e.from}-${e.to}-${i}`"
-          :x1="getNodeCenter(e.from).x"
-          :y1="getNodeCenter(e.from).y"
-          :x2="getNodeCenter(e.to).x"
-          :y2="getNodeCenter(e.to).y"
-          :stroke="activeTool === 'delete' ? 'var(--error-400)' : 'var(--border)'"
-          stroke-width="2"
-          style="cursor:pointer"
-          @click.stop="onEdgeClick(i, $event)"
-        />
-      </svg>
-      <div
-        v-for="node in nodes"
-        :key="node.id"
-        :ref="(el) => registerNodeRef(node.id, el)"
-        class="topo-node"
-        :class="{
-          'edge-start': edgeStartNodeId === node.id,
-          'draggable': activeTool === 'select'
-        }"
-        :style="{ left: node.left, top: node.top }"
-        @mousedown="onNodeMouseDown(node.id, $event)"
-        @click="onNodeClick(node.id, $event)"
-      >
-        <div class="topo-shape" :class="node.type">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="shapeIcons[node.type]"></svg>
+      <!-- 缩放/平移变换层：SVG 和节点都在此层内，统一变换 -->
+      <div class="topo-transform-layer" :style="transformStyle">
+        <svg width="100%" height="100%" :style="{ position: 'absolute', inset: 0, pointerEvents: activeTool === 'delete' ? 'auto' : 'none' }">
+          <line
+            v-for="(e, i) in edges"
+            :key="`${e.from}-${e.to}-${i}`"
+            :x1="getNodeCenter(e.from).x"
+            :y1="getNodeCenter(e.from).y"
+            :x2="getNodeCenter(e.to).x"
+            :y2="getNodeCenter(e.to).y"
+            :stroke="activeTool === 'delete' ? 'var(--error-400)' : 'var(--border)'"
+            stroke-width="2"
+            style="cursor:pointer"
+            @click.stop="onEdgeClick(i, $event)"
+          />
+        </svg>
+        <div
+          v-for="node in nodes"
+          :key="node.id"
+          :ref="(el) => registerNodeRef(node.id, el)"
+          class="topo-node"
+          :class="{
+            'edge-start': edgeStartNodeId === node.id,
+            'draggable': activeTool === 'select'
+          }"
+          :style="{ left: node.left, top: node.top }"
+          @mousedown="onNodeMouseDown(node.id, $event)"
+          @click="onNodeClick(node.id, $event)"
+        >
+          <div class="topo-shape" :class="node.type">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="shapeIcons[node.type]"></svg>
+          </div>
+          <span class="topo-label" @dblclick="onLabelDblClick(node.id, $event)">{{ node.label }}</span>
         </div>
-        <span class="topo-label" @dblclick="onLabelDblClick(node.id, $event)">{{ node.label }}</span>
       </div>
     </div>
 
@@ -364,5 +464,33 @@ defineExpose({ resetLayout, exportImage, loadTopology })
 }
 .draggable {
   cursor: move;
+}
+.topo-transform-layer {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--bg-100, #f8fafc);
+}
+.zoom-btn {
+  width: 26px; height: 26px;
+  border: none; background: transparent; cursor: pointer;
+  border-radius: 6px; font-size: 16px; line-height: 1;
+  color: var(--text, #0f172a);
+  display: flex; align-items: center; justify-content: center;
+}
+.zoom-btn:hover { background: var(--bg-200, #f1f5f9); }
+.zoom-btn.reset { font-size: 14px; }
+.zoom-level {
+  font-size: 12px; min-width: 42px; text-align: center;
+  color: var(--text-muted, #64748b); font-variant-numeric: tabular-nums;
 }
 </style>

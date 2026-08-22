@@ -16,12 +16,23 @@ const summary = ref<any>(null)
 const configAudit = ref<any>(null)
 const trafficAudit = ref<any>(null)
 
+// 带超时的 fetch 包装：避免后端 database is locked 时无限转圈
+function withTimeout<T>(promise: Promise<T>, ms = 60000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('请求超时，请稍后重试')), ms)
+    ),
+  ])
+}
+
 async function loadSummary() {
   loading.summary.value = true
   try {
-    summary.value = await auditApi.summary(store.currentProject.id)
+    summary.value = await withTimeout(auditApi.summary(store.currentProject.id))
   } catch (e: any) {
     summary.value = null
+    ElMessage.warning('汇总加载失败：' + (e?.message || '网络错误'))
   } finally {
     loading.summary.value = false
   }
@@ -30,9 +41,11 @@ async function loadSummary() {
 async function runConfigAudit() {
   loading.config.value = true
   try {
-    configAudit.value = await auditApi.configAudit(store.currentProject.id)
+    configAudit.value = await withTimeout(auditApi.configAudit(store.currentProject.id))
     ElMessage.success('配置核查完成')
     await loadSummary()
+  } catch (e: any) {
+    ElMessage.error('配置核查失败：' + (e?.message || '请稍后重试'))
   } finally {
     loading.config.value = false
   }
@@ -41,9 +54,11 @@ async function runConfigAudit() {
 async function runTrafficAudit() {
   loading.traffic.value = true
   try {
-    trafficAudit.value = await auditApi.trafficAudit(store.currentProject.id)
+    trafficAudit.value = await withTimeout(auditApi.trafficAudit(store.currentProject.id))
     ElMessage.success('流量审核完成')
     await loadSummary()
+  } catch (e: any) {
+    ElMessage.error('流量审核失败：' + (e?.message || '请稍后重试'))
   } finally {
     loading.traffic.value = false
   }
