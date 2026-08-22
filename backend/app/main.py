@@ -26,7 +26,15 @@ class SPAStaticFiles(StaticFiles):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
+    import sys
+    import traceback
+    try:
+        await init_db()
+    except Exception as e:
+        # 把完整的异常栈打到 stderr，避免被 FastAPI 包装后截断
+        print("[workbench] lifespan init_db FAILED:", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+        raise
     yield
 
 
