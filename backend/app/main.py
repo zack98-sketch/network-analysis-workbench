@@ -98,5 +98,10 @@ async def parse_progress_ws(websocket: WebSocket, task_id: str):
 app.mount("/data", StaticFiles(directory=str(settings.DATA_DIR)), name="data")
 app.mount("/exports", StaticFiles(directory=str(settings.EXPORT_DIR)), name="exports")
 
-if STATIC_DIR.exists() and INDEX_HTML.exists():
-    app.mount("/", SPAStaticFiles(directory=str(STATIC_DIR), html=True), name="frontend")
+# SPA 静态文件挂载：始终挂载，用 check_dir=False 避免目录不存在时初始化报错。
+# StaticFiles 在请求时动态读取文件，所以后端先启动、后构建前端也无需重启——
+# 前端构建完成后，/assets/* 立即可以访问。
+# 旧实现用 `if STATIC_DIR.exists(): app.mount(...)`，后端先于前端构建启动时
+# 会被跳过，之后即使构建了前端，/assets/* 也一直 404。
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/", SPAStaticFiles(directory=str(STATIC_DIR), html=True, check_dir=False), name="frontend")
